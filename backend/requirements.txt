@@ -1,0 +1,75 @@
+# ======================================================
+#  Backend Dependencies — requirements.txt
+#  Personalized Study Coach (FastAPI)
+# ======================================================
+
+# ── Web Framework ─────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9       # File uploads
+
+# ── Database & ORM ────────────────────────────────────
+sqlalchemy==2.0.30
+alembic==1.13.1               # Database migrations
+asyncpg==0.29.0               # Async PostgreSQL driver
+psycopg2-binary==2.9.9        # Sync PostgreSQL driver (Alembic offline mode)
+
+# ── Pydantic & Settings ───────────────────────────────
+pydantic==2.7.1
+pydantic-settings==2.3.1
+
+# ── Authentication ────────────────────────────────────
+# FIX #1 (CRITICAL): Replaced unmaintained python-jose (known CVEs) with PyJWT.
+# PyJWT is actively maintained, OWASP-recommended, and has no known algorithm confusion CVEs.
+PyJWT[crypto]==2.8.0
+passlib[bcrypt]==1.7.4
+httpx==0.27.0                 # Google OAuth HTTP client
+
+# ── Token Blacklist (Logout) ──────────────────────────
+# FIX #4 (HIGH): Redis for production token blacklisting.
+# The interface is already wired in core/token_blacklist.py.
+# Switch to RedisTokenBlacklist when deploying to production.
+redis==5.0.4
+
+# ── AI & LangChain ────────────────────────────────────
+langchain==0.2.5
+langchain-openai==0.1.9
+langchain-community==0.2.5
+openai==1.35.3
+
+# ── Vector Database ───────────────────────────────────
+chromadb==0.5.3
+
+# ── Document Processing ───────────────────────────────
+pypdf==4.2.0                  # PDF text extraction
+python-docx==1.1.2            # DOCX processing
+python-pptx==0.6.23           # PPTX processing
+Pillow==10.3.0                # Image processing
+pytesseract==0.3.10           # OCR wrapper for Tesseract
+
+# ── AWS S3 ────────────────────────────────────────────
+boto3==1.34.131
+
+# ── Google Calendar ───────────────────────────────────
+google-api-python-client==2.134.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+
+# ── Utilities ─────────────────────────────────────────
+python-dotenv==1.0.1
+aiofiles==23.2.1
+python-magic==0.4.27          # MIME type detection
+tenacity==8.3.0               # Retry logic
+
+# ── Testing ───────────────────────────────────────────
+pytest==8.2.2
+pytest-asyncio==0.23.7
+pytest-env==1.1.3             # FIX #16: Set env vars for test config via pytest.ini
+httpx==0.27.0                 # Test client for FastAPI
+factory-boy==3.3.0
+
+# ── Code Quality ──────────────────────────────────────
+black==24.4.2
+isort==5.13.2
+flake8==7.1.0
+mypy==1.10.0

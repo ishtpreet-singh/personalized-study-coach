@@ -1,0 +1,145 @@
+# ==============================================================
+#  Personalized Study Coach — Docker Compose (Development)
+# ==============================================================
+#  Services:
+#    - frontend   : React + Vite dev server
+#    - backend    : FastAPI application
+#    - db         : PostgreSQL 15
+#    - chromadb   : Vector database
+#    - pgadmin    : PostgreSQL GUI (dev only)
+# ==============================================================
+
+services:
+
+  # ── Frontend ──────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/frontend.Dockerfile
+    container_name: study_coach_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - study_coach_network
+
+
+  # ── Backend ───────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend.Dockerfile
+    container_name: study_coach_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8001
+    depends_on:
+      db:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    networks:
+      - study_coach_network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+
+  # ── PostgreSQL ────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: study_coach_db
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-study_coach_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-study_coach_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-study_coach_db}
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-study_coach_user} -d ${POSTGRES_DB:-study_coach_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - study_coach_network
+
+
+  # ── ChromaDB ──────────────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: study_coach_chroma
+
+    ports:
+      - "8001:8000"
+
+    volumes:
+      - chroma_data:/chroma/chroma
+
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - ALLOW_RESET=true
+
+    networks:
+      - study_coach_network
+
+
+  # ── pgAdmin (Dev Only) ────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: study_coach_pgadmin
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@studycoach.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+
+    ports:
+      - "5050:80"
+
+    depends_on:
+      - db
+
+    networks:
+      - study_coach_network
+
+    profiles:
+      - dev
+
+
+# ── Volumes ────────────────────────────────────────────────
+volumes:
+
+  postgres_data:
+    driver: local
+
+  chroma_data:
+    driver: local
+
+  uploads_data:
+    driver: local
+
+
+# ── Networks ───────────────────────────────────────────────
+networks:
+
+  study_coach_network:
+    driver: bridge
