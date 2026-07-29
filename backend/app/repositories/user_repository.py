@@ -97,6 +97,38 @@ class UserRepository(BaseRepository[User, UserCreate, UserUpdate]):
             db, db_obj=user, obj_in={"hashed_password": hashed_password}
         )
 
+    async def set_2fa_secret(
+        self, db: AsyncSession, *, user: User, secret: str
+    ) -> User:
+        """
+        Persist the TOTP secret generated during /2fa/setup.
+        2FA is NOT yet enabled — two_factor_enabled remains False until
+        the user successfully verifies their first OTP code.
+        """
+        return await self.update(
+            db, db_obj=user, obj_in={"two_factor_secret": secret}
+        )
 
-# ── Singleton instance — import this into services ────────────
+    async def set_2fa_enabled(
+        self,
+        db: AsyncSession,
+        *,
+        user: User,
+        enabled: bool,
+        secret: str | None = None,
+    ) -> User:
+        """
+        Enable or disable 2FA for a user atomically.
+
+        When enabling:  secret is already set; we just flip the flag.
+        When disabling: we clear both the flag AND the secret so the
+                        old secret cannot be re-activated without a new setup.
+        """
+        obj_in: dict = {"two_factor_enabled": enabled}
+        if not enabled:
+            obj_in["two_factor_secret"] = None
+        return await self.update(db, db_obj=user, obj_in=obj_in)
+
+
+# ── Singleton instance — import this into services ────────────────────
 user_repository = UserRepository()
