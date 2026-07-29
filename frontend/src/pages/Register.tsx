@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useGoogleLogin } from '@react-oauth/google';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card';
 import { useAuth } from '../hooks/useAuth';
 import apiClient from '../api/client';
+import { authApi } from '../api/auth';
 import axios from 'axios';
 
 export default function Register() {
@@ -16,6 +18,7 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Redirect if already authenticated
@@ -43,8 +46,14 @@ export default function Register() {
         password,
       });
 
-      // On success, redirect to login
-      navigate('/login');
+      // On success, show message
+      setSuccess("Account created successfully. Please check your email to verify your account before logging in.");
+      
+      // Clear form
+      setFullName("");
+      setEmail("");
+      setPassword("");
+      setConfirmPassword("");
     } catch (err) {
       if (axios.isAxiosError(err) && err.response) {
         // Handle validation errors from FastAPI
@@ -69,6 +78,30 @@ export default function Register() {
     }
   };
 
+  const handleGoogleLogin = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      try {
+        setError('');
+        setIsSubmitting(true);
+        // We pass the authorization code to our backend
+        // With the popup flow, Google expects the redirect_uri to be exactly 'postmessage'
+        await authApi.googleLogin(tokenResponse.code, 'postmessage');
+        // Google accounts are pre-verified, so we can log them in directly.
+        // But useAuth login isn't available here, so we redirect to login to handle it properly,
+        // or just use `login` from useAuth.
+        // Wait, `login` isn't imported from useAuth! Ah, `useAuth` returns `{ isAuthenticated }` above.
+        // Let's add it.
+        navigate('/login');
+      } catch (err) {
+        setError("Google login failed. Please try again.");
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    onError: () => setError("Google login failed. Please try again."),
+    flow: 'auth-code',
+  });
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -86,6 +119,12 @@ export default function Register() {
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl">
                 {error}
+              </div>
+            )}
+            
+            {success && (
+              <div className="p-3 bg-green-50 border border-green-200 text-green-600 text-sm rounded-xl">
+                {success}
               </div>
             )}
 
@@ -145,7 +184,7 @@ export default function Register() {
               </div>
             </div>
 
-            <Button type="button" variant="outline" className="w-full bg-white">
+            <Button type="button" variant="outline" className="w-full bg-white" onClick={() => handleGoogleLogin()}>
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />

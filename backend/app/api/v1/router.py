@@ -20,8 +20,10 @@ api_router = APIRouter()
 api_router.include_router(auth.router)
 
 # ── Future phases (uncomment as each is implemented) ──────────
-# from app.api.v1.routes import documents
-# api_router.include_router(documents.router)
+from app.api.v1.routes import documents, chat, conversations
+api_router.include_router(documents.router, prefix="/documents", tags=["documents"])
+api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+api_router.include_router(conversations.router, prefix="/conversations", tags=["conversations"])
 
 # from app.api.v1.routes import rag
 # api_router.include_router(rag.router)

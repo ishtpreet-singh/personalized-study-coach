@@ -55,6 +55,22 @@ class UserRepository(BaseRepository[User, UserCreate, UserUpdate]):
         )
         return result.scalar_one_or_none()
 
+    async def get_by_verification_token(
+        self, db: AsyncSession, *, token: str
+    ) -> Optional[User]:
+        result = await db.execute(
+            select(User).where(User.verification_token == token)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_reset_token(
+        self, db: AsyncSession, *, token: str
+    ) -> Optional[User]:
+        result = await db.execute(
+            select(User).where(User.reset_token == token)
+        )
+        return result.scalar_one_or_none()
+
     async def email_exists(
         self, db: AsyncSession, *, email: str
     ) -> bool:

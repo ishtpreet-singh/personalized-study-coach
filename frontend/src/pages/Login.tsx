@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldCheck } from 'lucide-react';
+import { useGoogleLogin } from '@react-oauth/google';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card';
 import { useAuth } from '../hooks/useAuth';
 import apiClient from '../api/client';
+import { authApi } from '../api/auth';
 import axios from 'axios';
 
 type LoginStep = 'credentials' | 'otp';
@@ -65,6 +67,27 @@ export default function Login() {
       setIsSubmitting(false);
     }
   };
+
+  const handleGoogleLogin = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      try {
+        setError('');
+        setIsSubmitting(true);
+        // We pass the authorization code to our backend. 
+        // With the popup flow, Google expects the redirect_uri to be exactly 'postmessage'
+        const response = await authApi.googleLogin(tokenResponse.code, 'postmessage');
+        await login(response.access_token);
+        const from = location.state?.from?.pathname || '/dashboard';
+        navigate(from, { replace: true });
+      } catch (err) {
+        setError(extractError(err));
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    onError: () => setError("Google login failed. Please try again."),
+    flow: 'auth-code',
+  });
 
   const handleOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,7 +160,7 @@ export default function Login() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-medium text-surface-700">Password</label>
-                    <a href="#" className="text-xs text-primary-600 hover:text-primary-700">Forgot password?</a>
+                    <Link to="/forgot-password" className="text-xs text-primary-600 hover:text-primary-700">Forgot password?</Link>
                   </div>
                   <input
                     type="password"
@@ -162,7 +185,7 @@ export default function Login() {
                   </div>
                 </div>
 
-                <Button type="button" variant="outline" className="w-full bg-white">
+                <Button type="button" variant="outline" className="w-full bg-white" onClick={() => handleGoogleLogin()}>
                   <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />

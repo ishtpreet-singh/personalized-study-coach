@@ -24,6 +24,8 @@ Architecture unchanged:
 """
 
 import logging
+import secrets
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import httpx
@@ -52,6 +54,7 @@ from app.models.user import User
 from app.repositories.user_repository import user_repository
 from app.schemas.auth import AccessTokenResponse, PreAuthTokenResponse, TokenResponse, TwoFactorSetupResponse
 from app.schemas.user import UserCreate
+from app.services.email_service import email_service
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +94,8 @@ class AuthService:
             )
 
         hashed = hash_password(user_in.password)
+        verification_token = secrets.token_urlsafe(32)
+        verification_token_expires = datetime.now(timezone.utc) + timedelta(hours=24)
 
         user_data = {
             "email": user_in.email.lower().strip(),
@@ -99,10 +104,15 @@ class AuthService:
             "is_active": True,
             "is_verified": False,
             "is_superuser": False,
+            "verification_token": verification_token,
+            "verification_token_expires": verification_token_expires,
         }
 
         user = await user_repository.create_from_dict(db, obj_in=user_data)
         logger.info(f"New user registered: {user.email} ({user.id})")
+        
+        await email_service.send_verification_email(user.email, verification_token)
+        
         return user
 
     # ── Login ──────────────────────────────────────────────────
@@ -132,6 +142,12 @@ class AuthService:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="This account has been deactivated.",
+            )
+
+        if not user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Please verify your email before logging in.",
             )
 
         if not verify_password(password, user.hashed_password):
@@ -239,6 +255,75 @@ class AuthService:
         if jti and remaining_ttl > 0:
             await token_blacklist.add(jti, remaining_ttl)
             logger.info(f"Token blacklisted on logout: jti={jti}, ttl={remaining_ttl}s")
+
+    # ── Email Verification & Password Reset ─────────────────────
+    
+    async def verify_email(self, db: AsyncSession, *, token: str) -> None:
+        user = await user_repository.get_by_verification_token(db, token=token)
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid verification token.")
+        
+        if user.verification_token_expires and user.verification_token_expires < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="Verification token expired.")
+        
+        await user_repository.update(
+            db, 
+            db_obj=user, 
+            obj_in={"is_verified": True, "verification_token": None, "verification_token_expires": None}
+        )
+        logger.info(f"User email verified: {user.id}")
+
+    async def resend_verification(self, db: AsyncSession, *, email: str) -> None:
+        user = await user_repository.get_by_email(db, email=email)
+        if not user:
+            # Silently return to prevent email enumeration
+            return
+            
+        if user.is_verified:
+            raise HTTPException(status_code=400, detail="Email is already verified.")
+            
+        new_token = secrets.token_urlsafe(32)
+        expires = datetime.now(timezone.utc) + timedelta(hours=24)
+        
+        await user_repository.update(
+            db, 
+            db_obj=user, 
+            obj_in={"verification_token": new_token, "verification_token_expires": expires}
+        )
+        await email_service.send_verification_email(user.email, new_token)
+        logger.info(f"Resent verification email for user {user.id}")
+
+    async def request_password_reset(self, db: AsyncSession, *, email: str) -> None:
+        user = await user_repository.get_by_email(db, email=email)
+        if not user:
+            return
+            
+        reset_token = secrets.token_urlsafe(32)
+        expires = datetime.now(timezone.utc) + timedelta(minutes=30)
+        
+        await user_repository.update(
+            db, 
+            db_obj=user, 
+            obj_in={"reset_token": reset_token, "reset_token_expires": expires}
+        )
+        await email_service.send_password_reset_email(user.email, reset_token)
+        logger.info(f"Password reset requested for user {user.id}")
+
+    async def reset_password(self, db: AsyncSession, *, token: str, new_password: str) -> None:
+        user = await user_repository.get_by_reset_token(db, token=token)
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid reset token.")
+            
+        if user.reset_token_expires and user.reset_token_expires < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="Reset token expired.")
+            
+        hashed = hash_password(new_password)
+        await user_repository.update(
+            db,
+            db_obj=user,
+            obj_in={"hashed_password": hashed, "reset_token": None, "reset_token_expires": None}
+        )
+        logger.info(f"Password reset completed for user {user.id}")
 
     # ── Password Change ────────────────────────────────────────
 

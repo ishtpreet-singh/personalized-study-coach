@@ -86,7 +86,12 @@ class Settings(BaseSettings):
     # ── OpenAI ─────────────────────────────────────────────
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o"
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+
+    # ── NVIDIA ─────────────────────────────────────────────
+    NVIDIA_API_KEY: str = ""
+    NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
+    NVIDIA_CHAT_MODEL: str = "meta/llama-3.1-70b-instruct"
+    NVIDIA_EMBEDDING_MODEL: str = "nvidia/nv-embedqa-e5-v5"
 
     # ── Redis (Token Blacklist) ────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -101,6 +106,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+
+    # ── Email Settings (Resend) ────────────────────────────
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "Study Coach <noreply@studycoach.example.com>"
+    FRONTEND_URL: Optional[str] = None
 
     # ── CORS ───────────────────────────────────────────────
     BACKEND_CORS_ORIGINS: List[str] = [
@@ -141,6 +151,15 @@ class Settings(BaseSettings):
                 "     python -c \"import secrets; print(secrets.token_hex(32))\"\n\n"
                 "   Then set it in your .env file:\n"
                 "     SECRET_KEY=<your_generated_key>\n"
+            )
+            
+        if not self.FRONTEND_URL:
+            raise ValueError(
+                "\n\n"
+                "🔴 STARTUP ABORTED — FRONTEND_URL is missing.\n"
+                "   The FRONTEND_URL must be configured so emails contain valid links.\n"
+                "   Example for development: FRONTEND_URL=http://localhost:5173\n"
+                "   Example for production: FRONTEND_URL=https://studycoach.yourdomain.com\n"
             )
         return self
 

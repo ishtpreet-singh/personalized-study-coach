@@ -2,7 +2,20 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { BookOpen, Clock, FileText, CheckCircle2, Bot, Sparkles, BrainCircuit, FileUp } from 'lucide-react';
+import { BookOpen, Clock, FileText, CheckCircle2, Bot, Sparkles, BrainCircuit, FileUp, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { documentApi } from '../api/documents';
+import { UploadModal } from '../components/documents/UploadModal';
+import type { Document, DocumentStatus } from '../types/document';
+import { formatDistanceToNow } from 'date-fns';
+import { Link } from 'react-router-dom';
+
+const statusConfig: Record<DocumentStatus, { label: string; color: "default" | "secondary" | "outline" | "success" | "warning" | "danger" }> = {
+  PENDING: { label: 'Queued', color: 'default' },
+  PROCESSING: { label: 'Processing', color: 'warning' },
+  COMPLETED: { label: 'Ready', color: 'success' },
+  FAILED: { label: 'Failed', color: 'danger' },
+};
 
 const PROGRESS_DATA = [
   { name: 'Mon', score: 65 },
@@ -16,8 +29,43 @@ const PROGRESS_DATA = [
 
 
 export default function Dashboard() {
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [totalDocs, setTotalDocs] = useState(0);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(true);
+
+  const fetchDocuments = async () => {
+    try {
+      const res = await documentApi.listDocuments(0, 5); // Just 5 for recent
+      setDocuments(res.items);
+      setTotalDocs(res.total);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingDocs(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDocuments();
+    const interval = setInterval(() => {
+      setDocuments(currentDocs => {
+        if (currentDocs.some(d => d.status === 'PENDING' || d.status === 'PROCESSING')) {
+          fetchDocuments();
+        }
+        return currentDocs;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      <UploadModal 
+        isOpen={isUploadOpen} 
+        onClose={() => setIsUploadOpen(false)} 
+        onSuccess={() => fetchDocuments()}
+      />
       
       {/* 1. Learning Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -50,7 +98,7 @@ export default function Dashboard() {
             </div>
             <div>
               <p className="text-sm font-medium text-surface-500">Documents</p>
-              <h4 className="text-2xl font-bold text-surface-900">12</h4>
+              <h4 className="text-2xl font-bold text-surface-900">{totalDocs}</h4>
             </div>
           </CardContent>
         </Card>
@@ -111,32 +159,44 @@ export default function Dashboard() {
                 <CardTitle>Recent Documents</CardTitle>
                 <CardDescription>Materials ready for Q&A and Quizzes</CardDescription>
               </div>
-              <Button size="sm" variant="outline" leftIcon={<FileUp className="w-4 h-4" />}>Upload</Button>
+              <div className="flex gap-2">
+                <Link to="/documents">
+                  <Button size="sm" variant="outline">View All</Button>
+                </Link>
+                <Button size="sm" onClick={() => setIsUploadOpen(true)} leftIcon={<FileUp className="w-4 h-4" />}>Upload</Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[
-                  { name: 'Cellular Biology Chapter 4.pdf', subject: 'Biology', status: 'Processed', date: '2 hours ago' },
-                  { name: 'World War II Timeline.docx', subject: 'History', status: 'Processing', date: '5 hours ago' },
-                  { name: 'Calculus Derivatives.pdf', subject: 'Math', status: 'Processed', date: '1 day ago' },
-                ].map((doc) => (
-                  <div key={doc.name} className="flex items-center justify-between p-4 rounded-xl border border-surface-100 hover:bg-surface-50 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center">
-                        <BookOpen className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-surface-900">{doc.name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-surface-500">{doc.date}</span>
-                          <span className="text-surface-300">•</span>
-                          <Badge variant="secondary" className="text-[10px] py-0">{doc.subject}</Badge>
+                {isLoadingDocs ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-surface-400" />
+                  </div>
+                ) : documents.length === 0 ? (
+                  <div className="text-center py-8 text-surface-500">
+                    <p className="mb-4">No documents uploaded yet.</p>
+                    <Button variant="outline" onClick={() => setIsUploadOpen(true)}>Upload your first document</Button>
+                  </div>
+                ) : (
+                  documents.map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between p-4 rounded-xl border border-surface-100 hover:bg-surface-50 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center">
+                          <BookOpen className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-surface-900">{doc.title}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-surface-500">{formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}</span>
+                            <span className="text-surface-300">•</span>
+                            <span className="text-xs text-surface-500">{(doc.file_size / 1024 / 1024).toFixed(2)} MB</span>
+                          </div>
                         </div>
                       </div>
+                      <Badge variant={statusConfig[doc.status].color}>{statusConfig[doc.status].label}</Badge>
                     </div>
-                    <Badge variant={doc.status === 'Processed' ? 'success' : 'warning'}>{doc.status}</Badge>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
@@ -162,9 +222,11 @@ export default function Dashboard() {
                   Try asking: "Explain the process of mitosis from my notes"
                 </div>
               </div>
-              <Button className="w-full bg-white text-primary-700 hover:bg-primary-50">
-                Start Chat Session
-              </Button>
+              <Link to="/tutor" className="block w-full">
+                <Button className="w-full bg-white text-primary-700 hover:bg-primary-50">
+                  Start Chat Session
+                </Button>
+              </Link>
             </CardContent>
           </Card>
 

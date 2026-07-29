@@ -39,6 +39,11 @@ from app.schemas.auth import (
     TwoFactorSetupResponse,
     TwoFactorVerifyRequest,
 )
+from app.schemas.auth import (
+    ResendVerificationRequest,
+    ResetPasswordRequest,
+    ResetPassword,
+)
 from app.schemas.common import MessageResponse
 from app.schemas.user import UserCreate, UserResponse
 from app.services.auth_service import auth_service
@@ -196,6 +201,49 @@ async def logout(
     return MessageResponse(
         message="Logged out successfully. Token has been invalidated."
     )
+
+
+# ── Email Verification & Password Reset ─────────────────────────────────
+
+@router.get(
+    "/verify-email",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify email address",
+)
+async def verify_email(token: str, db: DBSession) -> MessageResponse:
+    await auth_service.verify_email(db, token=token)
+    return MessageResponse(message="Email successfully verified.")
+
+@router.post(
+    "/resend-verification",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Resend verification email",
+)
+async def resend_verification(body: ResendVerificationRequest, db: DBSession) -> MessageResponse:
+    await auth_service.resend_verification(db, email=body.email)
+    return MessageResponse(message="Verification email sent if account exists.")
+
+@router.post(
+    "/reset-password-request",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Request a password reset email",
+)
+async def request_password_reset(body: ResetPasswordRequest, db: DBSession) -> MessageResponse:
+    await auth_service.request_password_reset(db, email=body.email)
+    return MessageResponse(message="Password reset email sent if account exists.")
+
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reset password using a token",
+)
+async def reset_password(body: ResetPassword, db: DBSession) -> MessageResponse:
+    await auth_service.reset_password(db, token=body.token, new_password=body.new_password)
+    return MessageResponse(message="Password successfully reset.")
 
 
 # ──────────────────────────────────────────────────────────────────────

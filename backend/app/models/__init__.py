@@ -13,5 +13,7 @@ Add new model imports here as each phase is implemented:
 """
 
 from app.models.user import User  # noqa: F401 — must be imported for Alembic
+from app.models.document import Document, DocumentChunk
+from app.models.conversation import Conversation, Message
 
-__all__ = ["User"]
+__all__ = ["User", "Document", "DocumentChunk", "Conversation", "Message"]

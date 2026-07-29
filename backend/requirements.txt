@@ -24,6 +24,7 @@ pydantic-settings==2.3.1
 PyJWT[crypto]==2.8.0
 passlib[bcrypt]==1.7.4
 httpx==0.27.0                 # Google OAuth HTTP client
+resend==2.35.0
 
 # ── Two-Factor Authentication ─────────────────────────────────
 pyotp>=2.9.0                  # TOTP secret generation and code verification
@@ -40,14 +41,18 @@ langchain==0.2.5
 langchain-openai==0.1.9
 langchain-community==0.2.5
 openai==1.35.3
+tiktoken==0.7.0
+langchain-nvidia-ai-endpoints==0.1.6
 
 # ── Vector Database ───────────────────────────────────
 chromadb==0.5.3
+langchain-chroma==0.1.2
 
 # ── Document Processing ───────────────────────────────
 pypdf==4.2.0                  # PDF text extraction
 python-docx==1.1.2            # DOCX processing
 python-pptx==0.6.23           # PPTX processing
+openpyxl==3.1.2               # XLSX processing
 Pillow==10.3.0                # Image processing
 pytesseract==0.3.10           # OCR wrapper for Tesseract
 

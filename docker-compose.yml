@@ -46,15 +46,15 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - CHROMA_HOST=chromadb
-      - CHROMA_PORT=8001
+      - CHROMA_PORT=8000
     depends_on:
       db:
         condition: service_healthy
       chromadb:
-        condition: service_started
+        condition: service_healthy
     networks:
       - study_coach_network
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
 
   # ── PostgreSQL ────────────────────────────────────────────
@@ -85,7 +85,7 @@ services:
 
   # ── ChromaDB ──────────────────────────────────────────────
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:0.5.3
     container_name: study_coach_chroma
 
     ports:
@@ -101,6 +101,12 @@ services:
 
     networks:
       - study_coach_network
+    
+    healthcheck:
+      test: ["CMD-SHELL", "perl -MIO::Socket::INET -e 'my $$s=IO::Socket::INET->new(PeerAddr=>\"localhost:8000\") or die; print $$s \"GET /api/v1 HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n\"; my $$r=<$$s>; die unless $$r =~ /HTTP\\/1\\.[01] 200/;'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 
   # ── pgAdmin (Dev Only) ────────────────────────────────────

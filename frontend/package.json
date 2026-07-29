@@ -10,21 +10,29 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.13.5",
+    "@tailwindcss/typography": "^0.5.20",
     "@tanstack/react-query": "^5.101.4",
     "axios": "^1.18.1",
     "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
     "framer-motion": "^12.43.0",
     "lucide-react": "^1.27.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.1",
     "recharts": "^3.10.1",
-    "tailwind-merge": "^3.6.0"
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.6.0",
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^6.0.3",
     "autoprefixer": "^10.5.4",
     "oxlint": "^1.71.0",

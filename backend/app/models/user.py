@@ -16,10 +16,10 @@ FIX: google_id unique index with nullable=True allows multiple NULLs in PostgreS
      in unique index comparisons). Documented explicitly here.
 """
 
-from typing import Optional
-
-from sqlalchemy import Boolean, CheckConstraint, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from typing import List, Optional
+from datetime import datetime
+from sqlalchemy import Boolean, CheckConstraint, Text, DateTime
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
 
@@ -82,6 +82,29 @@ class User(BaseModel):
         nullable=False,
     )
 
+    # ── Tokens ───────────────────────────────────────────
+    verification_token: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        index=True,
+    )
+    
+    verification_token_expires: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    
+    reset_token: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        index=True,
+    )
+    
+    reset_token_expires: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     # ── Google OAuth ───────────────────────────────────────────
     # PostgreSQL-specific: unique index on a nullable column allows multiple NULLs.
     # NULL != NULL in PostgreSQL unique index comparisons — this is correct behavior.
@@ -113,6 +136,10 @@ class User(BaseModel):
         Text,
         nullable=True,
     )
+
+    # ── Relationships ──────────────────────────────────────────
+    documents: Mapped[List["Document"]] = relationship("Document", back_populates="user", cascade="all, delete-orphan")
+    conversations: Mapped[List["Conversation"]] = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email}>"

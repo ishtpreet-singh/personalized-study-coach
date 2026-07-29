@@ -112,3 +112,20 @@ class TwoFactorLoginRequest(BaseModel):
     """
     pre_auth_token: str
     otp_code: str = Field(..., min_length=6, max_length=8, description="6-digit TOTP code")
+
+# ── Email & Password Schemas ───────────────────────────────────────────
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPassword(BaseModel):
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password_strength(cls, v: str) -> str:
+        return validate_password_strength(v)
