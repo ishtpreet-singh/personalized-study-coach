@@ -6,7 +6,11 @@ Request and response shapes for all authentication endpoints.
 FIX #10 (MEDIUM): PasswordChangeRequest.new_password now enforces the same
                    password strength rules as registration (was length-only before).
 FIX #26 (LOW):    MessageResponse removed — it lives in schemas/common.py.
+
+Phase 1.5: Added 2FA schemas for TOTP-based two-factor authentication.
 """
+
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -20,10 +24,25 @@ class LoginRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    """JWT pair returned after successful authentication."""
+    """JWT pair returned after successful authentication (no 2FA, or 2FA already complete)."""
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    requires_2fa: bool = False           # Always False when this schema is returned
+
+
+class PreAuthTokenResponse(BaseModel):
+    """
+    Returned by POST /auth/login when the user has 2FA enabled.
+
+    The client must take the pre_auth_token and a valid OTP code and call
+    POST /auth/2fa/login to receive the full access + refresh token pair.
+
+    pre_auth_token: Short-lived JWT (5 min TTL) of type "pre_auth".
+                    It only authorises the /auth/2fa/login endpoint.
+    """
+    requires_2fa: bool = True
+    pre_auth_token: str
 
 
 class AccessTokenResponse(BaseModel):
@@ -59,3 +78,37 @@ class PasswordChangeRequest(BaseModel):
     def validate_new_password_strength(cls, v: str) -> str:
         """Enforce the same strength rules as registration."""
         return validate_password_strength(v)
+
+
+# ── Two-Factor Authentication Schemas ──────────────────────────────────
+
+class TwoFactorSetupResponse(BaseModel):
+    """
+    Returned by POST /auth/2fa/setup.
+
+    qr_code_uri: A base64-encoded PNG data URI — embed directly as <img src=...>.
+    secret:      The raw base32 secret for manual entry in authenticator apps.
+    """
+    secret: str
+    qr_code_uri: str
+
+
+class TwoFactorVerifyRequest(BaseModel):
+    """Submitted to POST /auth/2fa/enable to activate 2FA after scanning the QR code."""
+    otp_code: str = Field(..., min_length=6, max_length=8, description="6-digit TOTP code")
+
+
+class TwoFactorDisableRequest(BaseModel):
+    """Submitted to POST /auth/2fa/disable — requires OTP to confirm the user has access."""
+    otp_code: str = Field(..., min_length=6, max_length=8, description="6-digit TOTP code")
+
+
+class TwoFactorLoginRequest(BaseModel):
+    """
+    Submitted to POST /auth/2fa/login to complete the second authentication step.
+
+    pre_auth_token: The short-lived token issued by POST /auth/login when 2FA is required.
+    otp_code:       The 6-digit code from the user's authenticator app.
+    """
+    pre_auth_token: str
+    otp_code: str = Field(..., min_length=6, max_length=8, description="6-digit TOTP code")

@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import (
     create_access_token,
+    create_pre_auth_token,
     create_refresh_token,
     decode_token,
     extract_jti_and_remaining_ttl,
@@ -41,9 +42,15 @@ from app.core.security import (
     verify_password,
 )
 from app.core.token_blacklist import token_blacklist
+from app.core.totp import (
+    generate_totp_secret,
+    generate_qr_code_base64,
+    get_totp_uri,
+    verify_totp,
+)
 from app.models.user import User
 from app.repositories.user_repository import user_repository
-from app.schemas.auth import AccessTokenResponse, TokenResponse
+from app.schemas.auth import AccessTokenResponse, PreAuthTokenResponse, TokenResponse, TwoFactorSetupResponse
 from app.schemas.user import UserCreate
 
 logger = logging.getLogger(__name__)
@@ -102,25 +109,16 @@ class AuthService:
 
     async def login(
         self, db: AsyncSession, *, email: str, password: str
-    ) -> TokenResponse:
+    ) -> TokenResponse | PreAuthTokenResponse:
         """
         Authenticate with email + password.
 
+        Phase 1.5: If the user has 2FA enabled, instead of issuing full tokens
+        we issue a short-lived pre_auth_token (5 min) and return requires_2fa=True.
+        The client then calls POST /auth/2fa/login with the pre_auth_token + OTP.
+
         FIX #11: is_active checked BEFORE verify_password.
-        bcrypt is intentionally slow (~100ms). Checking a deactivated account
-        status before the hash comparison avoids burning CPU on banned users.
-
-        Step order:
-          1. Lookup user by email
-          2. FIX: Check is_active immediately — short circuit if deactivated
-          3. Verify password hash (slow bcrypt operation only for active accounts)
-          4. Issue access + refresh tokens
-
-        Raises:
-          401 Unauthorized for invalid credentials (deliberately vague to prevent user enumeration).
-          403 Forbidden if the account is deactivated.
         """
-        # Step 1: Lookup — use generic error to prevent user enumeration
         user = await user_repository.get_by_email(db, email=email)
 
         if not user or not user.hashed_password:
@@ -130,14 +128,12 @@ class AuthService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # FIX #11: Step 2 — Check is_active BEFORE bcrypt (was after before this fix)
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="This account has been deactivated.",
             )
 
-        # Step 3: Password verification (intentionally slow bcrypt — only for active accounts)
         if not verify_password(password, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -145,7 +141,13 @@ class AuthService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Step 4: Issue tokens
+        # Phase 1.5: Gate on 2FA
+        if user.two_factor_enabled:
+            pre_auth_token = create_pre_auth_token(subject=str(user.id))
+            logger.info(f"2FA required for user {user.email} — pre_auth_token issued")
+            return PreAuthTokenResponse(pre_auth_token=pre_auth_token)
+
+        # Standard path — no 2FA
         access_token = create_access_token(subject=str(user.id))
         refresh_token = create_refresh_token(subject=str(user.id))
 
@@ -270,6 +272,149 @@ class AuthService:
         new_hash = hash_password(new_password)
         await user_repository.set_password(db, user=user, hashed_password=new_hash)
         logger.info(f"Password changed for user {user.id}")
+
+    # ── Two-Factor Authentication (TOTP) ───────────────────────
+
+    async def setup_2fa(self, db: AsyncSession, *, user: User) -> TwoFactorSetupResponse:
+        """
+        Generate a new TOTP secret, persist it on the user, and return a QR code.
+
+        Phase 1.5: Called by POST /auth/2fa/setup.
+
+        IMPORTANT: 2FA is NOT enabled after this call.
+        two_factor_enabled remains False until the user calls POST /auth/2fa/enable
+        with a valid OTP, proving they have successfully scanned the QR code.
+
+        Returns:
+            TwoFactorSetupResponse with the raw base32 secret (for manual entry)
+            and a base64 PNG data URI of the QR code (for in-app display).
+        """
+        secret = generate_totp_secret()
+        await user_repository.set_2fa_secret(db, user=user, secret=secret)
+
+        uri = get_totp_uri(secret, user.email)
+        qr_code_uri = generate_qr_code_base64(uri)
+
+        logger.info(f"2FA setup initiated for user {user.id}")
+        return TwoFactorSetupResponse(secret=secret, qr_code_uri=qr_code_uri)
+
+    async def enable_2fa(self, db: AsyncSession, *, user: User, otp_code: str) -> None:
+        """
+        Enable 2FA for a user after verifying their first OTP code.
+
+        Phase 1.5: Called by POST /auth/2fa/enable.
+
+        The user must have called /2fa/setup first (so two_factor_secret is set).
+        This endpoint verifies the OTP and, if valid, sets two_factor_enabled=True.
+
+        Raises:
+            400 Bad Request if 2FA setup has not been initiated.
+            400 Bad Request if the OTP code is invalid.
+        """
+        if not user.two_factor_secret:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="2FA setup not initiated. Call POST /auth/2fa/setup first.",
+            )
+
+        if not verify_totp(user.two_factor_secret, otp_code):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid OTP code. Please check your authenticator app and try again.",
+            )
+
+        await user_repository.set_2fa_enabled(db, user=user, enabled=True)
+        logger.info(f"2FA enabled for user {user.id}")
+
+    async def disable_2fa(self, db: AsyncSession, *, user: User, otp_code: str) -> None:
+        """
+        Disable 2FA for a user after verifying their OTP code.
+
+        Phase 1.5: Called by POST /auth/2fa/disable.
+
+        Requires a valid OTP to prevent an attacker with a stolen session token
+        from disabling 2FA without physical access to the device.
+        On success, clears both two_factor_enabled and two_factor_secret.
+
+        Raises:
+            400 Bad Request if 2FA is not currently enabled.
+            400 Bad Request if the OTP code is invalid.
+        """
+        if not user.two_factor_enabled or not user.two_factor_secret:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="2FA is not currently enabled on this account.",
+            )
+
+        if not verify_totp(user.two_factor_secret, otp_code):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid OTP code. Please check your authenticator app and try again.",
+            )
+
+        await user_repository.set_2fa_enabled(db, user=user, enabled=False)
+        logger.info(f"2FA disabled for user {user.id}")
+
+    async def complete_login_2fa(
+        self, db: AsyncSession, *, pre_auth_token: str, otp_code: str
+    ) -> TokenResponse:
+        """
+        Complete the 2FA login step: validate the pre_auth_token + OTP and issue full tokens.
+
+        Phase 1.5: Called by POST /auth/2fa/login.
+
+        Flow:
+          1. Decode and validate the pre_auth_token (type must be "pre_auth")
+          2. Load the user
+          3. Verify the OTP against their stored secret
+          4. Issue full access + refresh token pair
+
+        Raises:
+            401 Unauthorized if the pre_auth_token is invalid/expired.
+            401 Unauthorized if the OTP code is invalid.
+        """
+        invalid_pre_auth = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication session. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+        try:
+            payload = decode_token(pre_auth_token)
+        except (InvalidTokenError, PyJWTError):
+            raise invalid_pre_auth
+
+        if payload.get("type") != "pre_auth":
+            raise invalid_pre_auth
+
+        user_id_str: str = payload.get("sub", "")
+        try:
+            user_uuid = UUID(user_id_str)
+        except ValueError:
+            raise invalid_pre_auth
+
+        user = await user_repository.get(db, id=user_uuid)
+        if not user or not user.is_active:
+            raise invalid_pre_auth
+
+        if not user.two_factor_enabled or not user.two_factor_secret:
+            raise invalid_pre_auth
+
+        if not verify_totp(user.two_factor_secret, otp_code):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid OTP code.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        access_token = create_access_token(subject=str(user.id))
+        refresh_token = create_refresh_token(subject=str(user.id))
+
+        logger.info(f"2FA login complete for user {user.id}")
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
 
     # ── Google OAuth ───────────────────────────────────────────
 

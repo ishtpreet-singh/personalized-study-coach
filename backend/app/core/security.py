@@ -112,6 +112,34 @@ def create_refresh_token(subject: str | Any) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
+def create_pre_auth_token(subject: str | Any) -> str:
+    """
+    Create a short-lived pre-authentication token used for the 2FA second step.
+
+    Phase 1.5: Issued by POST /auth/login when the user has 2FA enabled.
+    The client must present this token + a valid OTP to POST /auth/2fa/login
+    to receive a full access + refresh token pair.
+
+    Token payload:
+        sub  — Subject (user UUID)
+        exp  — 5-minute expiry (very short — user should scan immediately)
+        iat  — Issued-at timestamp
+        jti  — Unique token ID
+        type — "pre_auth" — distinct from both "access" and "refresh"
+    """
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=5)
+
+    payload: Dict[str, Any] = {
+        "sub": str(subject),
+        "exp": expire,
+        "iat": now,
+        "jti": str(uuid.uuid4()),
+        "type": "pre_auth",
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
 def decode_token(token: str) -> Dict[str, Any]:
     """
     Decode and validate a JWT token.

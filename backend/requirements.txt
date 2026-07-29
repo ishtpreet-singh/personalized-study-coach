@@ -25,6 +25,10 @@ PyJWT[crypto]==2.8.0
 passlib[bcrypt]==1.7.4
 httpx==0.27.0                 # Google OAuth HTTP client
 
+# ── Two-Factor Authentication ─────────────────────────────────
+pyotp>=2.9.0                  # TOTP secret generation and code verification
+qrcode[pil]>=7.4.2            # QR code image generation for authenticator apps
+
 # ── Token Blacklist (Logout) ──────────────────────────
 # FIX #4 (HIGH): Redis for production token blacklisting.
 # The interface is already wired in core/token_blacklist.py.

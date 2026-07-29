@@ -31,8 +31,13 @@ from app.schemas.auth import (
     GoogleAuthRequest,
     LoginRequest,
     PasswordChangeRequest,
+    PreAuthTokenResponse,
     RefreshRequest,
     TokenResponse,
+    TwoFactorDisableRequest,
+    TwoFactorLoginRequest,
+    TwoFactorSetupResponse,
+    TwoFactorVerifyRequest,
 )
 from app.schemas.common import MessageResponse
 from app.schemas.user import UserCreate, UserResponse
@@ -63,17 +68,17 @@ async def register(
     return UserResponse.model_validate(user)
 
 
-# ── POST /auth/login ───────────────────────────────────────────
+# ── POST /auth/login ──────────────────────────────────────────────────
 @router.post(
     "/login",
-    response_model=TokenResponse,
+    response_model=TokenResponse | PreAuthTokenResponse,
     status_code=status.HTTP_200_OK,
     summary="Login with email and password",
 )
 async def login(
     credentials: LoginRequest,
     db: DBSession,
-) -> TokenResponse:
+) -> TokenResponse | PreAuthTokenResponse:
     """
     Authenticate with email and password.
 
@@ -169,7 +174,7 @@ async def google_auth(
     )
 
 
-# ── POST /auth/logout ──────────────────────────────────────────
+# ── POST /auth/logout ──────────────────────────────────────────────────
 @router.post(
     "/logout",
     response_model=MessageResponse,
@@ -192,3 +197,90 @@ async def logout(
         message="Logged out successfully. Token has been invalidated."
     )
 
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase 1.5 — Two-Factor Authentication (TOTP)
+# ──────────────────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/2fa/setup",
+    response_model=TwoFactorSetupResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Initiate 2FA setup — generate secret and QR code",
+)
+async def setup_2fa(
+    current_user: CurrentUser,
+    db: DBSession,
+) -> TwoFactorSetupResponse:
+    """
+    Generate a TOTP secret and return a QR code for the authenticated user to scan.
+
+    2FA is NOT yet enabled after this call.
+    The user must call POST /auth/2fa/enable with a valid OTP to activate it.
+    """
+    return await auth_service.setup_2fa(db, user=current_user)
+
+
+@router.post(
+    "/2fa/enable",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Enable 2FA after scanning QR code",
+)
+async def enable_2fa(
+    body: TwoFactorVerifyRequest,
+    current_user: CurrentUser,
+    db: DBSession,
+) -> MessageResponse:
+    """
+    Verify the first OTP code and activate 2FA on the account.
+
+    Requires the user to have called POST /auth/2fa/setup first.
+    """
+    await auth_service.enable_2fa(db, user=current_user, otp_code=body.otp_code)
+    return MessageResponse(message="Two-factor authentication has been enabled.")
+
+
+@router.post(
+    "/2fa/disable",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Disable 2FA (requires OTP confirmation)",
+)
+async def disable_2fa(
+    body: TwoFactorDisableRequest,
+    current_user: CurrentUser,
+    db: DBSession,
+) -> MessageResponse:
+    """
+    Disable 2FA on the account after verifying the current OTP.
+
+    Requires a valid OTP to prevent session-hijacking attacks from
+    disabling 2FA without physical access to the authenticator device.
+    """
+    await auth_service.disable_2fa(db, user=current_user, otp_code=body.otp_code)
+    return MessageResponse(message="Two-factor authentication has been disabled.")
+
+
+@router.post(
+    "/2fa/login",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Complete 2FA login — exchange pre_auth_token + OTP for full JWT",
+)
+async def login_2fa(
+    body: TwoFactorLoginRequest,
+    db: DBSession,
+) -> TokenResponse:
+    """
+    Second step of 2FA login.
+
+    Submit the pre_auth_token received from POST /auth/login together with
+    the 6-digit OTP from the authenticator app. Returns full access + refresh tokens.
+    """
+    return await auth_service.complete_login_2fa(
+        db,
+        pre_auth_token=body.pre_auth_token,
+        otp_code=body.otp_code,
+    )

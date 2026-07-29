@@ -98,5 +98,21 @@ class User(BaseModel):
         nullable=True,
     )
 
+    # ── Two-Factor Authentication (TOTP) ──────────────────────────────
+    # Phase 1.5: TOTP-based 2FA via authenticator apps.
+    # two_factor_secret is set during setup but 2FA is only active when
+    # two_factor_enabled=True (set only after first successful OTP verification).
+    two_factor_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
+
+    two_factor_secret: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email}>"

@@ -10,6 +10,7 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
+import Settings from "./pages/Settings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,7 +47,7 @@ function App() {
                 <Route path="/quizzes" element={<Navigate to="/dashboard" />} />
                 <Route path="/weak-topics" element={<Navigate to="/dashboard" />} />
                 <Route path="/schedule" element={<Navigate to="/dashboard" />} />
-                <Route path="/settings" element={<Navigate to="/dashboard" />} />
+                <Route path="/settings" element={<Settings />} />
               </Route>
             </Route>
 

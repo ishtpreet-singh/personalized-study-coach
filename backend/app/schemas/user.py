@@ -78,13 +78,14 @@ class UserInDB(UserBase):
 class UserResponse(BaseModel):
     """
     Safe outbound schema — returned by all API endpoints.
-    Never exposes hashed_password or google_id.
+    Never exposes hashed_password, google_id, or two_factor_secret.
     """
     id: UUID
     email: EmailStr
     full_name: str
     is_active: bool
     is_verified: bool
+    two_factor_enabled: bool
     avatar_url: Optional[str] = None
     created_at: datetime
 
