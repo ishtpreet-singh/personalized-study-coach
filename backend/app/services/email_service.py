@@ -24,8 +24,8 @@ class EmailService:
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to send email. Please try again later."
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to send verification email. Please check your email address or try again later."
             )
 
     async def send_verification_email(self, to_email: str, token: str):

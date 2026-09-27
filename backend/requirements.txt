@@ -43,6 +43,7 @@ langchain-community==0.2.5
 openai==1.35.3
 tiktoken==0.7.0
 langchain-nvidia-ai-endpoints==0.1.6
+langchain-google-genai==1.0.10
 
 # ── Vector Database ───────────────────────────────────
 chromadb==0.5.3

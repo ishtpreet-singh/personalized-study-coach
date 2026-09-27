@@ -26,11 +26,16 @@ export default {
           500: "#10b981",
         },
         surface: {
-          50:  "#F8FAFC",   // Page background (slate-50)
-          100: "#F1F5F9",   // Subtle background (slate-100)
-          200: "#E2E8F0",   // Borders
-          800: "#1E293B",   // Text dark
-          900: "#0F172A",   // Text darker
+          50:  "#f8fafc",   // slate-50
+          100: "#f1f5f9",   // slate-100
+          200: "#e2e8f0",   // slate-200
+          300: "#cbd5e1",   // slate-300
+          400: "#94a3b8",   // slate-400
+          500: "#64748b",   // slate-500
+          600: "#475569",   // slate-600
+          700: "#334155",   // slate-700
+          800: "#1e293b",   // slate-800
+          900: "#0f172a",   // slate-900
         },
       },
       // ── Typography ────────────────────────────────────────
@@ -41,15 +46,15 @@ export default {
       },
       // ── Shadows ───────────────────────────────────────────
       boxShadow: {
-        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
-        'card-hover': '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)',
-        'glow-primary': "0 0 20px rgba(99, 102, 241, 0.4)",
+        'sm': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        'card': '0 2px 8px rgba(0, 0, 0, 0.05)',
+        'card-hover': '0 4px 12px rgba(0, 0, 0, 0.08)',
+        // No glowing blurry shadows
       },
       // ── Animations ────────────────────────────────────────
       animation: {
-        "fade-in": "fadeIn 0.4s ease-in-out",
-        "slide-up": "slideUp 0.4s ease-out",
-        "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "fade-in": "fadeIn 0.2s ease-out",
+        "slide-up": "slideUp 0.2s ease-out",
       },
       keyframes: {
         fadeIn: {
@@ -57,7 +62,7 @@ export default {
           "100%": { opacity: "1" },
         },
         slideUp: {
-          "0%":   { opacity: "0", transform: "translateY(16px)" },
+          "0%":   { opacity: "0", transform: "translateY(8px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
       },

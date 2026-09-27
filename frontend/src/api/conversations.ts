@@ -19,8 +19,10 @@ export interface ConversationResponse extends ConversationSummary {
 }
 
 export const conversationApi = {
-  async listConversations(): Promise<ConversationSummary[]> {
-    const response = await apiClient.get<ConversationSummary[]>("/api/v1/conversations");
+  async listConversations(subjectId?: string): Promise<ConversationSummary[]> {
+    const response = await apiClient.get<ConversationSummary[]>("/api/v1/conversations", {
+      params: { subject_id: subjectId }
+    });
     return response.data;
   },
 
@@ -29,8 +31,8 @@ export const conversationApi = {
     return response.data;
   },
 
-  async createConversation(): Promise<ConversationSummary> {
-    const response = await apiClient.post<ConversationSummary>("/api/v1/conversations");
+  async createConversation(subjectId: string): Promise<ConversationSummary> {
+    const response = await apiClient.post<ConversationSummary>("/api/v1/conversations", { subject_id: subjectId });
     return response.data;
   },
 

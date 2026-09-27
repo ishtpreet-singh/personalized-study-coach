@@ -15,5 +15,11 @@ Add new model imports here as each phase is implemented:
 from app.models.user import User  # noqa: F401 — must be imported for Alembic
 from app.models.document import Document, DocumentChunk
 from app.models.conversation import Conversation, Message
+from app.models.quiz import Question, Quiz, QuizAttempt, QuizAnswer
+from app.models.topic import Topic
+from app.models.support import SupportTicket, BugReport
+from app.models.subject import Subject
+from app.models.learning_profile import AILearningProfile
+from app.models.activity import StudyActivity
 
-__all__ = ["User", "Document", "DocumentChunk", "Conversation", "Message"]
+__all__ = ["User", "Document", "DocumentChunk", "Conversation", "Message", "Question", "Quiz", "QuizAttempt", "QuizAnswer", "Topic", "SupportTicket", "BugReport", "Subject", "AILearningProfile", "StudyActivity"]

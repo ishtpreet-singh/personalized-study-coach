@@ -12,8 +12,13 @@ class MessageResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ConversationCreate(BaseModel):
+    subject_id: UUID
+
 class ConversationSummary(BaseModel):
     id: UUID
+    user_id: UUID
+    subject_id: UUID
     title: str
     created_at: datetime
     updated_at: datetime

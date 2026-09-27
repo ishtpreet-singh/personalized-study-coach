@@ -12,3 +12,11 @@
  *   adaptive.ts   → get weak topics, personalized quiz
  *   studyPlan.ts  → generate plan, sync with Google Calendar
  */
+
+export * from "./auth";
+export * from "./documents";
+export * from "./quizzes";
+export * from "./chat";
+export * from "./conversations";
+export * from "./support";
+export * from "./subjects";

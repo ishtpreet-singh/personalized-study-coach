@@ -26,7 +26,7 @@ export function ChatWindow({ messages, isLoading, error, sendMessage }: ChatWind
   return (
     <div className="flex flex-col h-full bg-surface-50 relative">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-md border-b border-surface-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white border-b border-surface-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
             <span className="text-primary-600 font-bold text-sm">AI</span>
@@ -44,7 +44,7 @@ export function ChatWindow({ messages, isLoading, error, sendMessage }: ChatWind
           {messages.length === 0 ? (
             <div className="h-[60vh] flex flex-col items-center justify-center text-center text-surface-500 space-y-6 animate-fade-in">
               <div className="relative">
-                <div className="absolute inset-0 bg-primary-200 rounded-full blur-xl opacity-50 animate-pulse-slow"></div>
+                {/* Clean background */}
                 <div className="w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-700 text-white rounded-2xl flex items-center justify-center text-3xl font-bold shadow-lg shadow-primary-500/30 relative z-10 transform rotate-3">
                   AI
                 </div>

@@ -12,26 +12,13 @@ export default function AuthLayout() {
           </div>
           <span className="font-display font-bold text-xl tracking-tight text-surface-900">Study Coach</span>
         </Link>
-        <a href="#" className="flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors">
+        <Link to="/help" className="flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2 py-1">
           <HelpCircle className="w-4 h-4" />
           Need help?
-        </a>
+        </Link>
       </header>
 
-      {/* Decorative Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        {/* Large curved shape on bottom-left */}
-        <div className="absolute -bottom-[20%] -left-[10%] w-[60%] h-[80%] rounded-full bg-primary-50/80 blur-3xl" />
-        
-        {/* Subtle dot pattern on right */}
-        <div 
-          className="absolute top-[20%] -right-12 w-64 h-96 opacity-30"
-          style={{
-            backgroundImage: 'radial-gradient(#6366f1 2px, transparent 2px)',
-            backgroundSize: '24px 24px'
-          }}
-        />
-      </div>
+      {/* Decorative Background Elements Removed for SaaS aesthetic */}
       
       {/* Main Content Area */}
       <div className="flex-1 flex items-center justify-center relative z-10 w-full p-4 sm:p-6 lg:p-8 mt-16">

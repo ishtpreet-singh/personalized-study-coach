@@ -5,15 +5,20 @@ logger = logging.getLogger(__name__)
 
 class PromptBuilder:
     @staticmethod
-    def build_rag_prompt(question: str, chunks: List[str]) -> str:
+    def build_rag_prompt(question: str, chunks: List[str], learning_profile_context: str = "") -> str:
         """
-        Builds a structured prompt for the AI Tutor based on RAG context.
+        Builds a structured prompt for the AI Tutor based on RAG context and persistent Learning Profile.
         """
         logger.info("Building prompt...")
         
+        system_intro = "System: You are an AI Tutor designed to help students learn effectively."
+        if learning_profile_context:
+            system_intro += f"\n\nStudent Learning Profile:\n{learning_profile_context}\n"
+            system_intro += "\nUse this profile to adapt your teaching style, focus on the student's weaknesses, and praise their strengths."
+        
         if not chunks:
             prompt = (
-                "System: You are an AI Tutor designed to help students learn effectively. "
+                f"{system_intro}\n\n"
                 "However, no relevant context was found in the user's uploaded documents to answer the current question.\n"
                 "Please inform the user that you don't have the context in their files, but you can still try to help using your general knowledge.\n\n"
                 f"User Question: {question}\n\n"
@@ -22,7 +27,8 @@ class PromptBuilder:
         else:
             context = "\n\n".join(chunks)
             prompt = (
-                "System: You are a helpful AI Tutor. Use the provided context from the user's study materials to answer their question. "
+                f"{system_intro}\n\n"
+                "Use the provided context from the user's study materials to answer their question. "
                 "If the answer is not contained in the context, say so, but provide the best answer you can.\n\n"
                 f"Context from study materials:\n{context}\n\n"
                 f"User Question: {question}\n\n"

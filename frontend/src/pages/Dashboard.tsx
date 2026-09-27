@@ -1,302 +1,374 @@
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
-import { BookOpen, Clock, FileText, CheckCircle2, Bot, Sparkles, BrainCircuit, FileUp, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { documentApi } from '../api/documents';
-import { UploadModal } from '../components/documents/UploadModal';
-import type { Document, DocumentStatus } from '../types/document';
-import { formatDistanceToNow } from 'date-fns';
+import { useDebounce } from 'use-debounce';
 import { Link } from 'react-router-dom';
-
-const statusConfig: Record<DocumentStatus, { label: string; color: "default" | "secondary" | "outline" | "success" | "warning" | "danger" }> = {
-  PENDING: { label: 'Queued', color: 'default' },
-  PROCESSING: { label: 'Processing', color: 'warning' },
-  COMPLETED: { label: 'Ready', color: 'success' },
-  FAILED: { label: 'Failed', color: 'danger' },
-};
-
-const PROGRESS_DATA = [
-  { name: 'Mon', score: 65 },
-  { name: 'Tue', score: 72 },
-  { name: 'Wed', score: 68 },
-  { name: 'Thu', score: 85 },
-  { name: 'Fri', score: 82 },
-  { name: 'Sat', score: 90 },
-  { name: 'Sun', score: 94 },
-];
-
+import { motion } from 'framer-motion';
+import { Plus, BookOpen, Bot, Calendar, Upload, FileQuestion, ArrowRight, CheckCircle2, Clock } from 'lucide-react';
+import { Card, CardContent } from '../components/ui/Card';
+import { useAuth } from '../hooks/useAuth';
+import { dashboardApi } from '../api/dashboard';
+import type { DashboardData } from '../api/dashboard';
+import { CreateSubjectModal } from '../components/subjects/CreateSubjectModal';
+import { StatRing } from '../components/dashboard/StatRing';
+import { cn } from '../utils/cn';
 
 export default function Dashboard() {
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [totalDocs, setTotalDocs] = useState(0);
-  const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [isLoadingDocs, setIsLoadingDocs] = useState(true);
+  const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
+  const [sortBy, setSortBy] = useState<'name' | 'recent' | 'mastery'>('name');
 
-  const fetchDocuments = async () => {
+  const fetchDashboardData = async () => {
     try {
-      const res = await documentApi.listDocuments(0, 5); // Just 5 for recent
-      setDocuments(res.items);
-      setTotalDocs(res.total);
-    } catch (e) {
-      console.error(e);
+      const data = await dashboardApi.getDashboardData();
+      setDashboardData(data);
+    } catch (error) {
+      console.error("Failed to fetch dashboard data", error);
     } finally {
-      setIsLoadingDocs(false);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDocuments();
-    const interval = setInterval(() => {
-      setDocuments(currentDocs => {
-        if (currentDocs.some(d => d.status === 'PENDING' || d.status === 'PROCESSING')) {
-          fetchDocuments();
-        }
-        return currentDocs;
-      });
-    }, 5000);
-    return () => clearInterval(interval);
+    fetchDashboardData();
   }, []);
 
+  const hour = new Date().getHours();
+  let greeting = 'Good Night';
+  let emoji = '🌙';
+  if (hour >= 5 && hour < 12) { greeting = 'Good Morning'; emoji = '👋'; }
+  else if (hour >= 12 && hour < 17) { greeting = 'Good Afternoon'; emoji = '👋'; }
+  else if (hour >= 17 && hour < 21) { greeting = 'Good Evening'; emoji = '👋'; }
+
+  const filteredAndSortedSubjects = dashboardData?.subjects
+    .filter(s => s.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
+    .sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'mastery') return b.stats.mastery - a.stats.mastery;
+      if (sortBy === 'recent') {
+        const timeA = a.stats.last_studied_at ? new Date(a.stats.last_studied_at).getTime() : 0;
+        const timeB = b.stats.last_studied_at ? new Date(b.stats.last_studied_at).getTime() : 0;
+        return timeB - timeA;
+      }
+      return 0;
+    }) || [];
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      <UploadModal 
-        isOpen={isUploadOpen} 
-        onClose={() => setIsUploadOpen(false)} 
-        onSuccess={() => fetchDocuments()}
+    <div className="w-full space-y-10 pb-12">
+      <CreateSubjectModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={fetchDashboardData}
       />
       
-      {/* 1. Learning Overview Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-primary-100 flex items-center justify-center text-primary-600">
-              <BrainCircuit className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-surface-500">Overall Mastery</p>
-              <h4 className="text-2xl font-bold text-surface-900">78%</h4>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600">
-              <Clock className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-surface-500">Study Hours</p>
-              <h4 className="text-2xl font-bold text-surface-900">24.5h</h4>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-accent-100 flex items-center justify-center text-accent-600">
-              <FileText className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-surface-500">Documents</p>
-              <h4 className="text-2xl font-bold text-surface-900">{totalDocs}</h4>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600">
-              <CheckCircle2 className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-surface-500">Quizzes Done</p>
-              <h4 className="text-2xl font-bold text-surface-900">8</h4>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* 1. Top Header Hero */}
+      {isLoading || !dashboardData ? (
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 animate-pulse">
+          <div className="flex-1 space-y-4">
+            <div className="w-1/4 h-8 bg-slate-200 rounded-full"></div>
+            <div className="w-3/4 h-12 bg-slate-200 rounded"></div>
+            <div className="w-1/2 h-6 bg-slate-200 rounded"></div>
+          </div>
+          <div className="flex gap-4">
+            <div className="w-32 h-24 bg-slate-200 rounded-2xl"></div>
+            <div className="w-36 h-24 bg-slate-200 rounded-2xl"></div>
+            <div className="w-48 h-24 bg-slate-200 rounded-2xl"></div>
+          </div>
+        </div>
+      ) : (
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+        <div className="flex-1">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white text-slate-700 text-sm font-semibold border border-slate-200 mb-6 shadow-sm">
+            🎯 Today's Goal: {dashboardData.todayGoal}
+          </div>
+          <h1 className="text-5xl font-bold text-slate-900 tracking-tight flex items-center gap-3 leading-tight">
+            {greeting}, {user?.full_name?.split(' ')[0] || 'Student'} {emoji}
+          </h1>
+          <p className="text-slate-500 mt-4 text-lg">Let's make today productive. You have a {dashboardData.study_streak}-day study streak 🔥</p>
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Main Column */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="flex items-center gap-4 w-full lg:w-auto">
+          <Card className="p-5 flex flex-col gap-1.5 flex-1 lg:w-32">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><Clock className="w-4 h-4"/> Est. Time</span>
+            <span className="text-2xl font-bold text-slate-900">{dashboardData.estimatedStudyTimeMins} <span className="text-base font-medium text-slate-500">min</span></span>
+          </Card>
           
-          {/* 5. Quiz Progress */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <div>
-                <CardTitle>Quiz Performance</CardTitle>
-                <CardDescription>Your accuracy over the last 7 days</CardDescription>
-              </div>
-              <Badge variant="success">Trending Up</Badge>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[250px] mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={PROGRESS_DATA}>
-                    <defs>
-                      <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                    />
-                    <Area type="monotone" dataKey="score" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
+          <Card className="p-5 flex flex-col gap-1.5 flex-1 lg:w-40">
+            <span className="text-xs font-semibold text-orange-600/80 uppercase tracking-wider flex items-center gap-1.5"><Calendar className="w-4 h-4"/> Next Up</span>
+            <span className="text-2xl font-bold text-slate-900">{dashboardData.nextRevision}</span>
           </Card>
 
-          {/* 6. Uploaded Materials */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Recent Documents</CardTitle>
-                <CardDescription>Materials ready for Q&A and Quizzes</CardDescription>
-              </div>
-              <div className="flex gap-2">
-                <Link to="/documents">
-                  <Button size="sm" variant="outline">View All</Button>
-                </Link>
-                <Button size="sm" onClick={() => setIsUploadOpen(true)} leftIcon={<FileUp className="w-4 h-4" />}>Upload</Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {isLoadingDocs ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-surface-400" />
-                  </div>
-                ) : documents.length === 0 ? (
-                  <div className="text-center py-8 text-surface-500">
-                    <p className="mb-4">No documents uploaded yet.</p>
-                    <Button variant="outline" onClick={() => setIsUploadOpen(true)}>Upload your first document</Button>
-                  </div>
-                ) : (
-                  documents.map((doc) => (
-                    <div key={doc.id} className="flex items-center justify-between p-4 rounded-xl border border-surface-100 hover:bg-surface-50 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center">
-                          <BookOpen className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-surface-900">{doc.title}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-surface-500">{formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}</span>
-                            <span className="text-surface-300">•</span>
-                            <span className="text-xs text-surface-500">{(doc.file_size / 1024 / 1024).toFixed(2)} MB</span>
+          <Card className="p-5 flex items-center gap-5 col-span-2 md:col-span-1 lg:w-auto">
+            <StatRing percentage={dashboardData.overallMastery} size={56} strokeWidth={5} color="text-primary-600" />
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Overall</span>
+              <span className="text-2xl font-bold text-slate-900 leading-tight">Mastery</span>
+            </div>
+          </Card>
+        </div>
+      </header>
+      )}
+
+      {/* 2. Subjects Grid (Highest Priority) */}
+      <section className="space-y-6 pt-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Your Subjects</h2>
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <input 
+              type="text" 
+              placeholder="Search subjects..." 
+              className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm w-full md:w-56 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 shadow-sm transition-all"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <select 
+              className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 shadow-sm transition-all cursor-pointer"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+            >
+              <option value="name">Sort by Name</option>
+              <option value="recent">Recently Studied</option>
+              <option value="mastery">Mastery Score</option>
+            </select>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {isLoading ? (
+            [...Array(4)].map((_, i) => (
+              <Card key={i} className="h-[220px] animate-pulse" />
+            ))
+          ) : (
+            <>
+              {filteredAndSortedSubjects.map((subject) => (
+                <motion.div
+                  key={subject.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                  whileHover={{ y: -4 }}
+                  className="h-full"
+                >
+                  <Link to={`/subjects/${subject.id}`} className="block h-full">
+                    <Card className="h-full group flex flex-col relative overflow-hidden">
+                      <CardContent className="p-6 flex-1 flex flex-col">
+                        <div className="flex justify-between items-start mb-6 relative">
+                          <div className="flex items-center gap-4 pr-16">
+                            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-slate-50 border border-slate-100 text-2xl shadow-sm group-hover:scale-105 transition-transform shrink-0">
+                              {subject.icon || '📘'}
+                            </div>
+                            <div>
+                              <h3 className="text-lg font-semibold text-slate-900 group-hover:text-primary-600 transition-colors leading-tight line-clamp-2" title={subject.name}>
+                                {subject.name}
+                              </h3>
+                              <p className="text-xs text-slate-500 mt-1 font-medium">
+                                Last studied: {subject.stats.last_studied_at ? new Date(subject.stats.last_studied_at).toLocaleDateString() : 'Never'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="absolute top-0 right-0">
+                            <StatRing 
+                              percentage={subject.stats.mastery}
+                              size={48} 
+                              strokeWidth={4} 
+                              color={subject.stats.mastery > 70 ? "text-emerald-500" : "text-primary-600"} 
+                            />
                           </div>
                         </div>
+
+                        <div className="grid grid-cols-3 gap-3 mb-6">
+                          <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                            <span className="block text-xl font-bold text-slate-800">{subject.stats.document_count}</span>
+                            <span className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-1">Docs</span>
+                          </div>
+                          <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                            <span className="block text-xl font-bold text-slate-800">{subject.stats.quiz_count}</span>
+                            <span className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-1">Quizzes</span>
+                          </div>
+                          <div className="bg-red-50 rounded-xl p-2.5 text-center border border-red-100">
+                            <span className="block text-xl font-bold text-red-600">{subject.stats.weak_topic_count}</span>
+                            <span className="block text-[10px] font-semibold text-red-500 uppercase tracking-wider mt-1">Weak</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-auto">
+                          <div className="w-full bg-primary-600 text-white rounded-xl py-2.5 px-4 flex items-center justify-center gap-2 font-semibold text-sm shadow-sm group-hover:bg-primary-700 transition-colors">
+                            Continue Learning <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                </motion.div>
+              ))}
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                whileHover={{ y: -4 }}
+                onClick={() => setIsCreateModalOpen(true)}
+                className="h-full"
+              >
+                <Card className="h-full border-dashed border-2 border-slate-200 hover:border-primary-400 hover:bg-primary-50/50 cursor-pointer group flex items-center justify-center min-h-[220px]">
+                  <CardContent className="p-6 flex flex-col items-center text-center">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-slate-50 border border-slate-100 text-slate-400 group-hover:text-primary-600 group-hover:bg-primary-100 group-hover:border-primary-200 transition-colors mb-3">
+                      <Plus className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-900 group-hover:text-primary-700 transition-colors">Create New Subject</h3>
+                    <p className="text-sm text-slate-500 mt-1.5">Start a new learning journey</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* 3. Dashboard Widgets (Today's Plan, Quick Actions, Upcoming) */}
+      <section className="pt-6">
+        <h2 className="text-2xl font-semibold text-slate-900 tracking-tight mb-6">Overview</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+          
+          {/* Today's Plan */}
+          <Card className="flex flex-col">
+            <CardContent className="p-5 flex-1 flex flex-col">
+              <h3 className="text-xl font-semibold text-slate-900 mb-4">Today's Plan</h3>
+              <div className="space-y-3 flex-1">
+                {isLoading || !dashboardData ? (
+                  <div className="space-y-2">
+                    {[...Array(2)].map((_, i) => (
+                      <div key={i} className="h-8 bg-slate-50 rounded-md animate-pulse" />
+                    ))}
+                  </div>
+                ) : dashboardData.plan.length > 0 ? (
+                  dashboardData.plan.slice(0, 3).map((item, i) => (
+                    <div key={item.id} className="flex items-center gap-3">
+                      <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500 shrink-0">
+                        {i + 1}
                       </div>
-                      <Badge variant={statusConfig[doc.status].color}>{statusConfig[doc.status].label}</Badge>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-base font-medium text-slate-900 truncate">
+                          {item.label} <span className="text-slate-500 font-normal">{item.subject ? `(${item.subject})` : ''}</span>
+                        </p>
+                      </div>
                     </div>
                   ))
+                ) : (
+                  <div className="text-base text-slate-500 text-center py-2">No plan for today.</div>
                 )}
               </div>
-            </CardContent>
-          </Card>
-
-        </div>
-
-        {/* Sidebar Column */}
-        <div className="space-y-6">
-
-          {/* 2. AI Tutor Section */}
-          <Card className="bg-gradient-to-br from-primary-600 to-primary-800 text-white border-none shadow-glow-primary">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-white">
-                <Bot className="w-5 h-5" />
-                AI Tutor
-              </CardTitle>
-              <CardDescription className="text-primary-100">Your personal AI is ready to help you study.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 mb-6">
-                <div className="bg-white/10 rounded-lg p-3 text-sm backdrop-blur-sm">
-                  <Sparkles className="w-4 h-4 inline-block mr-2 text-accent-400" />
-                  Try asking: "Explain the process of mitosis from my notes"
-                </div>
-              </div>
-              <Link to="/tutor" className="block w-full">
-                <Button className="w-full bg-white text-primary-700 hover:bg-primary-50">
-                  Start Chat Session
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-
-          {/* 3. Knowledge Weakness Analysis */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Knowledge Gaps</CardTitle>
-              <CardDescription>Topics needing review</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="font-medium text-surface-700">Physics (Kinematics)</span>
-                    <span className="text-red-600 font-bold">45%</span>
-                  </div>
-                  <div className="h-2 w-full bg-surface-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-red-500 rounded-full" style={{ width: '45%' }} />
-                  </div>
-                  <p className="text-xs text-surface-500 mt-2">Suggestion: Review Chapter 3 slides</p>
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="font-medium text-surface-700">History (Cold War)</span>
-                    <span className="text-yellow-600 font-bold">65%</span>
-                  </div>
-                  <div className="h-2 w-full bg-surface-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-yellow-500 rounded-full" style={{ width: '65%' }} />
-                  </div>
-                  <p className="text-xs text-surface-500 mt-2">Suggestion: Take a quick 10Q quiz</p>
-                </div>
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <Link to="/dashboard" className="text-base font-medium text-primary-600 flex items-center gap-1.5 hover:gap-2 transition-all">
+                  View Full Plan <ArrowRight className="w-4 h-4" />
+                </Link>
               </div>
             </CardContent>
           </Card>
 
-          {/* 4. Study Schedule */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Upcoming Sessions</CardTitle>
-              <CardDescription>Synced with Google Calendar</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-surface-50 border border-surface-100">
-                  <div className="w-10 h-10 rounded-lg bg-primary-100 text-primary-700 flex flex-col items-center justify-center shrink-0">
-                    <span className="text-xs font-bold">OCT</span>
-                    <span className="text-sm font-black">24</span>
+          {/* Quick Actions */}
+          <Card className="flex flex-col">
+            <CardContent className="p-5 flex-1 flex flex-col">
+              <h3 className="text-xl font-semibold text-slate-900 mb-4">Quick Actions</h3>
+              <div className="grid grid-cols-2 gap-3 flex-1">
+                {[
+                  { label: "AI Tutor", icon: Bot, color: "text-primary-600", bg: "bg-primary-50" },
+                  { label: "Calendar", icon: Calendar, color: "text-indigo-600", bg: "bg-indigo-50" },
+                  { label: "Upload", icon: Upload, color: "text-emerald-600", bg: "bg-emerald-50" },
+                  { label: "Quiz", icon: FileQuestion, color: "text-rose-600", bg: "bg-rose-50" }
+                ].map((action, i) => (
+                  <div key={i} className="p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer flex flex-col items-center justify-center gap-2 text-center">
+                    <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", action.bg, action.color)}>
+                      <action.icon className="w-5 h-5" />
+                    </div>
+                    <p className="text-sm font-medium text-slate-900">{action.label}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Upcoming */}
+          <Card className="flex flex-col">
+            <CardContent className="p-5 flex-1 flex flex-col">
+              <h3 className="text-xl font-semibold text-slate-900 mb-4">Upcoming</h3>
+              <div className="space-y-4 flex-1">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+                    <Calendar className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-surface-900">Physics Revision</p>
-                    <p className="text-xs text-surface-500">2:00 PM - 3:30 PM</p>
+                    <p className="text-base font-medium text-slate-900">DBMS Quiz</p>
+                    <p className="text-sm text-slate-500 mt-0.5">Tomorrow, 9:00 AM</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-surface-50 border border-surface-100">
-                  <div className="w-10 h-10 rounded-lg bg-surface-200 text-surface-700 flex flex-col items-center justify-center shrink-0">
-                    <span className="text-xs font-bold">OCT</span>
-                    <span className="text-sm font-black">25</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center text-primary-600 shrink-0">
+                    <BookOpen className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-surface-900">Biology Quiz Prep</p>
-                    <p className="text-xs text-surface-500">10:00 AM - 11:00 AM</p>
+                    <p className="text-base font-medium text-slate-900">OS Revision</p>
+                    <p className="text-sm text-slate-500 mt-0.5">Aug 6, 7:00 PM</p>
                   </div>
                 </div>
-                <Button variant="outline" className="w-full mt-2" size="sm">Connect Calendar</Button>
+              </div>
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <Link to="/dashboard" className="text-base font-medium text-primary-600 flex items-center gap-1.5 hover:gap-2 transition-all">
+                  View Calendar <ArrowRight className="w-4 h-4" />
+                </Link>
               </div>
             </CardContent>
           </Card>
 
         </div>
-      </div>
+      </section>
+
+      {/* 4. Recent Activity */}
+      <section className="space-y-6 pt-6">
+        <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Recent Activity</h2>
+        <Card>
+          <CardContent className="p-5 flex flex-col md:flex-row gap-3 min-h-[80px]">
+            {isLoading || !dashboardData ? (
+               <div className="w-full h-12 bg-slate-50 rounded-xl animate-pulse" />
+            ) : dashboardData.recentActivity.length > 0 ? (
+              <>
+                {dashboardData.recentActivity.map((activity, _i) => (
+                  <div key={activity.id} className="flex-1 p-3 rounded-xl hover:bg-slate-50 transition-colors flex items-start gap-4 cursor-pointer">
+                    <div className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-0.5",
+                      activity.type === 'mastery' ? 'bg-emerald-50 text-emerald-600' :
+                      activity.type === 'quiz' ? 'bg-orange-50 text-orange-600' :
+                      activity.type === 'upload' ? 'bg-primary-50 text-primary-600' : 'bg-slate-100 text-slate-600'
+                    )}>
+                      {activity.type === 'mastery' && <CheckCircle2 className="w-5 h-5" />}
+                      {activity.type === 'quiz' && <FileQuestion className="w-5 h-5" />}
+                      {activity.type === 'upload' && <Upload className="w-5 h-5" />}
+                      {activity.type === 'study' && <BookOpen className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <p className="text-base font-medium text-slate-900">{activity.title}</p>
+                      <p className="text-sm text-slate-500 mt-1">
+                        {activity.context} • {new Date(activity.timestamp).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex-1 p-3 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center cursor-pointer relative">
+                  <Link to="/dashboard" className="text-base font-medium text-primary-600 flex items-center gap-1.5 hover:underline">
+                    View All <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <div className="w-full p-4 text-center text-base text-slate-500">No recent activity</div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
     </div>
   );
 }

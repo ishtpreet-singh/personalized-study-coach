@@ -91,7 +91,17 @@ class Settings(BaseSettings):
     NVIDIA_API_KEY: str = ""
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
     NVIDIA_CHAT_MODEL: str = "meta/llama-3.1-70b-instruct"
-    NVIDIA_EMBEDDING_MODEL: str = "nvidia/nv-embedqa-e5-v5"
+    # NOTE: nvidia/nv-embedqa-e5-v5 was retired 2026-08-25. Embeddings now use Google Gemini.
+    NVIDIA_EMBEDDING_MODEL: str = ""  # Deprecated — kept for reference only, not used
+
+    # ── Google Gemini ───────────────────────────────────────
+    GEMINI_API_KEY: str = ""
+    GEMINI_CHAT_MODEL: str = "models/gemini-3.6-flash"   # fast + free tier
+    GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"  # 3072-dim, replaces retired NVIDIA model
+
+    # ── LLM Provider Selection ──────────────────────────────
+    # Set to "gemini" to use Google Gemini, "nvidia" to use NVIDIA NIM
+    LLM_PROVIDER: str = "nvidia"
 
     # ── Redis (Token Blacklist) ────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"

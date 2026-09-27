@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { motion, useScroll, useTransform, useMotionValueEvent } from 'framer-motion';
 import { useEffect, useState, useRef } from 'react';
 import { Button } from '../components/ui/Button';
+import { LayoutContainer } from '../components/ui/LayoutContainer';
 import {
   Bot, FileText, BrainCircuit, Calendar, Upload, MessageSquare,
   ShieldCheck, Mail, KeyRound, History, Sparkles, BookOpen,
@@ -115,16 +116,18 @@ export default function Landing() {
     <div className="min-h-screen bg-white text-surface-900 font-sans overflow-x-hidden">
 
       {/* ━━━ NAVBAR ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/80 backdrop-blur-xl shadow-sm border-b border-surface-200/60' : 'bg-transparent'}`}>
-        <nav className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5 group">
+      <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white shadow-sm border-b border-surface-200' : 'bg-transparent'}`}>
+        <LayoutContainer as="nav" className="h-16 flex items-center justify-between relative">
+          <div className="flex-1 flex items-center">
+            <Link to="/" className="flex items-center gap-2.5 group">
             <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-md shadow-primary-500/20 group-hover:shadow-primary-500/40 transition-shadow">
               <span className="text-white text-base">🎓</span>
             </div>
             <span className="font-display font-bold text-xl tracking-tight text-surface-900">Study Coach</span>
-          </Link>
+            </Link>
+          </div>
 
-          <div className="hidden md:flex items-center gap-8">
+          <div className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center gap-8">
             <a href="#features" className="text-sm font-medium text-surface-500 hover:text-surface-900 transition-colors">Features</a>
             <a href="#how-it-works" className="text-sm font-medium text-surface-500 hover:text-surface-900 transition-colors">How it Works</a>
             <a href="#roadmap" className="text-sm font-medium text-surface-500 hover:text-surface-900 transition-colors">Roadmap</a>
@@ -132,18 +135,18 @@ export default function Landing() {
           </div>
 
           {/* Right side: trust badge ↔ CTA cross-fade */}
-          <div className="relative flex items-center justify-end min-w-[260px] h-10">
+          <div className="flex-1 relative flex items-center justify-end h-10">
             {/* Trust badge — visible while hero is on screen */}
             <motion.div
               animate={pastHero ? { opacity: 0, y: -6, scale: 0.95 } : { opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
               className={`absolute inset-y-0 right-0 flex items-center ${pastHero ? 'pointer-events-none' : ''}`}
             >
-              <div className="hidden sm:flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/60 backdrop-blur-md border border-surface-200/60 shadow-sm">
+              <div className="hidden lg:flex items-center gap-2.5 px-4 py-2 rounded-full bg-white border border-surface-200 shadow-sm">
                 <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center">
                   <Sparkles className="w-3.5 h-3.5 text-primary-600" />
                 </div>
-                <div className="flex flex-col">
+                <div className="flex flex-col text-left whitespace-nowrap">
                   <span className="text-xs font-semibold text-surface-800 leading-tight">AI-Powered Learning</span>
                   <span className="text-[10px] text-surface-400 font-medium leading-tight">Free · No Credit Card</span>
                 </div>
@@ -164,23 +167,21 @@ export default function Landing() {
               </Link>
             </motion.div>
           </div>
-        </nav>
+        </LayoutContainer>
       </header>
 
       <main>
         {/* ━━━ HERO ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <section ref={heroRef} className="relative pt-32 pb-24 sm:pt-40 sm:pb-32 px-6 overflow-hidden">
-          {/* Animated background gradients */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-primary-100/60 rounded-full blur-[120px] animate-pulse-slow" />
-            <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-primary-200/40 rounded-full blur-[100px] animate-pulse-slow" style={{ animationDelay: '1.5s' }} />
-            <div className="absolute top-[30%] right-[20%] w-[300px] h-[300px] bg-accent-400/10 rounded-full blur-[80px] animate-pulse-slow" style={{ animationDelay: '3s' }} />
+        <section ref={heroRef} className="relative pt-32 pb-24 sm:pt-40 sm:pb-32 overflow-hidden flex flex-col items-center justify-center min-h-[90vh]">
+          {/* Static Background Elements */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden bg-slate-50">
             {/* Dot pattern */}
             <div className="absolute inset-0 opacity-[0.025]" style={{ backgroundImage: 'radial-gradient(circle, #6366f1 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
           </div>
 
-          <motion.div style={{ opacity: heroOpacity, scale: heroScale }} className="max-w-5xl mx-auto text-center relative z-10">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+          <LayoutContainer className="relative z-10 flex flex-col items-center text-center">
+            <motion.div style={{ opacity: heroOpacity, scale: heroScale }} className="w-full flex flex-col items-center">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="flex justify-center w-full">
               <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-primary-50 text-primary-700 border border-primary-200 mb-8">
                 <Sparkles className="w-3.5 h-3.5" />
                 AI-Powered Learning Platform
@@ -191,7 +192,7 @@ export default function Landing() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
-              className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-surface-900 mb-7 leading-[1.1]"
+              className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-surface-900 mb-7 leading-[1.1] max-w-4xl mx-auto"
             >
               Your AI-Powered{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 via-primary-500 to-accent-500">
@@ -203,7 +204,7 @@ export default function Landing() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-base sm:text-lg md:text-xl text-surface-500 mb-12 max-w-3xl mx-auto leading-relaxed"
+              className="text-base sm:text-lg md:text-xl text-surface-500 mb-12 max-w-[768px] mx-auto leading-relaxed"
             >
               Upload your lecture notes, PDFs, presentations, and textbooks.
               Study Coach understands your materials, answers questions with citations,
@@ -215,7 +216,7 @@ export default function Landing() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
-              className="flex flex-col sm:flex-row items-center justify-center gap-4"
+              className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full"
             >
               <Link to="/register">
                 <Button size="lg" className="rounded-full px-10 shadow-lg shadow-primary-500/25 hover:shadow-primary-500/40 transition-shadow" rightIcon={<ArrowRight className="w-4 h-4" />}>
@@ -228,7 +229,8 @@ export default function Landing() {
                 </Button>
               </Link>
             </motion.div>
-          </motion.div>
+            </motion.div>
+          </LayoutContainer>
 
           {/* Scroll indicator */}
           <motion.div
@@ -243,8 +245,8 @@ export default function Landing() {
         </section>
 
         {/* ━━━ FEATURES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <section id="features" className="py-24 sm:py-32 px-6 bg-surface-50/50 border-y border-surface-100">
-          <div className="max-w-7xl mx-auto">
+        <section id="features" className="py-24 sm:py-32 bg-surface-50/50 border-y border-surface-100">
+          <LayoutContainer className="max-w-7xl mx-auto">
             <SectionHeading
               badge="Features"
               title="Everything you need to ace your exams"
@@ -269,12 +271,12 @@ export default function Landing() {
                 </FadeIn>
               ))}
             </div>
-          </div>
+          </LayoutContainer>
         </section>
 
         {/* ━━━ HOW IT WORKS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <section id="how-it-works" className="py-24 sm:py-32 px-6 bg-white">
-          <div className="max-w-4xl mx-auto">
+        <section id="how-it-works" className="py-24 sm:py-32 bg-white">
+          <LayoutContainer className="max-w-4xl mx-auto">
             <SectionHeading
               badge="How It Works"
               title="Start studying smarter in minutes"
@@ -304,12 +306,12 @@ export default function Landing() {
                 ))}
               </div>
             </div>
-          </div>
+          </LayoutContainer>
         </section>
 
         {/* ━━━ WHY STUDY COACH (Comparison) ━━━━━━━━━━━━━━━━━━━━ */}
-        <section className="py-24 sm:py-32 px-6 bg-surface-50/50 border-y border-surface-100">
-          <div className="max-w-5xl mx-auto">
+        <section className="py-24 sm:py-32 bg-surface-50/50 border-y border-surface-100">
+          <LayoutContainer className="max-w-5xl mx-auto">
             <SectionHeading
               badge="Why Study Coach"
               title="Stop studying the hard way"
@@ -361,12 +363,12 @@ export default function Landing() {
                 </div>
               </div>
             </FadeIn>
-          </div>
+          </LayoutContainer>
         </section>
 
         {/* ━━━ AVAILABLE TODAY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <section className="py-24 sm:py-32 px-6 bg-white">
-          <div className="max-w-5xl mx-auto">
+        <section className="py-24 sm:py-32 bg-white">
+          <LayoutContainer className="max-w-5xl mx-auto">
             <SectionHeading
               badge="✅ Live Now"
               title="Available today"
@@ -385,12 +387,12 @@ export default function Landing() {
                 ))}
               </div>
             </FadeIn>
-          </div>
+          </LayoutContainer>
         </section>
 
         {/* ━━━ ROADMAP ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <section id="roadmap" className="py-24 sm:py-32 px-6 bg-surface-50/50 border-y border-surface-100">
-          <div className="max-w-5xl mx-auto">
+        <section id="roadmap" className="py-24 sm:py-32 bg-surface-50/50 border-y border-surface-100">
+          <LayoutContainer className="max-w-5xl mx-auto">
             <SectionHeading
               badge="Product Roadmap"
               title="What's coming next"
@@ -414,12 +416,12 @@ export default function Landing() {
                 ))}
               </div>
             </FadeIn>
-          </div>
+          </LayoutContainer>
         </section>
 
         {/* ━━━ WHY IT'S DIFFERENT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <section className="py-24 sm:py-32 px-6 bg-white">
-          <div className="max-w-6xl mx-auto">
+        <section className="py-24 sm:py-32 bg-white">
+          <LayoutContainer className="max-w-6xl mx-auto">
             <SectionHeading
               badge="What Makes Us Different"
               title="Built for serious learners"
@@ -439,12 +441,12 @@ export default function Landing() {
                 </FadeIn>
               ))}
             </div>
-          </div>
+          </LayoutContainer>
         </section>
 
         {/* ━━━ FAQ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <section id="faq" className="py-24 sm:py-32 px-6 bg-surface-50/50 border-y border-surface-100">
-          <div className="max-w-3xl mx-auto">
+        <section id="faq" className="py-24 sm:py-32 bg-surface-50/50 border-y border-surface-100">
+          <LayoutContainer className="max-w-3xl mx-auto">
             <SectionHeading
               badge="FAQ"
               title="Frequently asked questions"
@@ -464,16 +466,15 @@ export default function Landing() {
                 ))}
               </div>
             </FadeIn>
-          </div>
+          </LayoutContainer>
         </section>
 
         {/* ━━━ FINAL CTA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <section className="py-24 sm:py-32 px-6 relative overflow-hidden">
+        <section className="py-24 sm:py-32 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-primary-600 via-primary-700 to-primary-800" />
           <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
-          <div className="absolute top-[-50%] right-[-20%] w-[600px] h-[600px] bg-white/5 rounded-full blur-[100px]" />
 
-          <div className="max-w-3xl mx-auto text-center relative z-10">
+          <LayoutContainer className="max-w-3xl mx-auto text-center relative z-10">
             <FadeIn>
               <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-5 tracking-tight">
                 Ready to study smarter?
@@ -485,7 +486,7 @@ export default function Landing() {
               </p>
             </FadeIn>
             <FadeIn delay={0.2}>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full">
                 <Link to="/register">
                   <Button size="lg" className="rounded-full px-10 bg-white text-primary-700 hover:bg-primary-50 shadow-lg" rightIcon={<ArrowRight className="w-4 h-4" />}>
                     Create Free Account
@@ -498,13 +499,13 @@ export default function Landing() {
                 </Link>
               </div>
             </FadeIn>
-          </div>
+          </LayoutContainer>
         </section>
       </main>
 
       {/* ━━━ FOOTER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <footer className="bg-surface-900 text-surface-100 py-16 px-6">
-        <div className="max-w-7xl mx-auto">
+      <footer className="bg-surface-900 text-surface-100 py-16">
+        <LayoutContainer>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
             {/* Brand */}
             <div>
@@ -559,7 +560,7 @@ export default function Landing() {
               Built with ❤️ for students everywhere.
             </p>
           </div>
-        </div>
+        </LayoutContainer>
       </footer>
     </div>
   );

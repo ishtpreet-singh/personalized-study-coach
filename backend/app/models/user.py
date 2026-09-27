@@ -140,6 +140,9 @@ class User(BaseModel):
     # ── Relationships ──────────────────────────────────────────
     documents: Mapped[List["Document"]] = relationship("Document", back_populates="user", cascade="all, delete-orphan")
     conversations: Mapped[List["Conversation"]] = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
+    subjects: Mapped[List["Subject"]] = relationship("Subject", back_populates="user", cascade="all, delete-orphan")
+    learning_profiles: Mapped[List["AILearningProfile"]] = relationship("AILearningProfile", back_populates="user", cascade="all, delete-orphan")
+    quizzes: Mapped[List["Quiz"]] = relationship("Quiz", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email}>"

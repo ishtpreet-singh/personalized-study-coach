@@ -4,7 +4,7 @@ import { chatApi } from "../api/chat";
 import { conversationApi, type ConversationSummary } from "../api/conversations";
 import type { ChatMessage } from "../types/chat";
 
-export function useConversation() {
+export function useConversation(subjectId?: string) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -16,14 +16,14 @@ export function useConversation() {
   // Load all conversations on mount
   const fetchConversations = useCallback(async () => {
     try {
-      const data = await conversationApi.listConversations();
+      const data = await conversationApi.listConversations(subjectId);
       setConversations(data);
     } catch (err) {
       console.error("Failed to load conversations:", err);
     } finally {
       setIsLoadingHistory(false);
     }
-  }, []);
+  }, [subjectId]);
 
   useEffect(() => {
     fetchConversations();
@@ -94,7 +94,7 @@ export function useConversation() {
       let newConversationId: string | null = null;
 
       try {
-        for await (const payload of chatApi.streamMessage(userMessage.content, currentConversationId)) {
+        for await (const payload of chatApi.streamMessage(userMessage.content, currentConversationId, subjectId)) {
           if (payload.type === "conversation_id") {
             newConversationId = payload.data;
             if (!activeId) {
@@ -116,7 +116,7 @@ export function useConversation() {
         }
       } catch (streamErr) {
         console.warn("Streaming failed, falling back to standard fetch...", streamErr);
-        const result = await chatApi.sendMessage(userMessage.content, currentConversationId);
+        const result = await chatApi.sendMessage(userMessage.content, currentConversationId, subjectId);
         newConversationId = result.conversation_id;
         if (!activeId) {
             setActiveId(result.conversation_id);
@@ -140,7 +140,7 @@ export function useConversation() {
     } finally {
       setIsSending(false);
     }
-  }, [activeId, fetchConversations]);
+  }, [activeId, fetchConversations, subjectId]);
 
   const deleteConversation = useCallback(async (id: string) => {
     try {

@@ -7,6 +7,7 @@ class Source(BaseModel):
     page: Optional[int] = Field(None, description="The page number if available")
 
 class ChatRequest(BaseModel):
+    subject_id: UUID = Field(..., description="The ID of the subject context")
     question: str = Field(..., description="The question asked by the user")
     conversation_id: Optional[UUID] = Field(None, description="The ID of the conversation to append to")
     stream: bool = Field(False, description="Whether to stream the response incrementally")

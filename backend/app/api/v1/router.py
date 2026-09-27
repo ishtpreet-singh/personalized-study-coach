@@ -12,24 +12,22 @@ Adding a new feature:
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import auth
+from app.api.v1.routes import auth, documents, quizzes, conversations, chat, support, subjects, dashboard
 
 api_router = APIRouter()
 
-# ── Phase 1: Authentication ────────────────────────────────────
 api_router.include_router(auth.router)
-
-# ── Future phases (uncomment as each is implemented) ──────────
-from app.api.v1.routes import documents, chat, conversations
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+api_router.include_router(subjects.router, prefix="/subjects", tags=["subjects"])
 api_router.include_router(documents.router, prefix="/documents", tags=["documents"])
-api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+api_router.include_router(quizzes.router, prefix="/quizzes", tags=["quizzes"])
 api_router.include_router(conversations.router, prefix="/conversations", tags=["conversations"])
+api_router.include_router(support.router)
+api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 
 # from app.api.v1.routes import rag
 # api_router.include_router(rag.router)
 
-# from app.api.v1.routes import quiz
-# api_router.include_router(quiz.router)
 
 # from app.api.v1.routes import adaptive
 # api_router.include_router(adaptive.router)

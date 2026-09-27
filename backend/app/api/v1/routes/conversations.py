@@ -1,15 +1,16 @@
-from typing import List
+from typing import List, Optional
+
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import CurrentUser
-from app.schemas.conversation import ConversationResponse, ConversationSummary, ConversationUpdate
+from app.schemas.conversation import ConversationResponse, ConversationSummary, ConversationUpdate, ConversationCreate
 from app.services.conversation_service import conversation_service
 
 router = APIRouter()
 
 @router.get("/", response_model=List[ConversationSummary])
-async def list_conversations(current_user: CurrentUser):
-    return await conversation_service.get_user_conversations(current_user.id)
+async def list_conversations(current_user: CurrentUser, subject_id: Optional[UUID] = None):
+    return await conversation_service.get_user_conversations(current_user.id, subject_id)
 
 @router.get("/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(conversation_id: UUID, current_user: CurrentUser):
@@ -19,8 +20,8 @@ async def get_conversation(conversation_id: UUID, current_user: CurrentUser):
     return conversation
 
 @router.post("/", response_model=ConversationSummary)
-async def create_conversation(current_user: CurrentUser):
-    return await conversation_service.create_conversation(current_user.id)
+async def create_conversation(create_data: ConversationCreate, current_user: CurrentUser):
+    return await conversation_service.create_conversation(current_user.id, create_data.subject_id)
 
 @router.patch("/{conversation_id}", response_model=ConversationSummary)
 async def update_conversation(conversation_id: UUID, update_data: ConversationUpdate, current_user: CurrentUser):

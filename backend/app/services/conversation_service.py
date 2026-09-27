@@ -8,9 +8,12 @@ from app.models.conversation import Conversation, Message
 from app.schemas.conversation import ConversationUpdate
 
 class ConversationService:
-    async def get_user_conversations(self, user_id: UUID) -> List[Conversation]:
+    async def get_user_conversations(self, user_id: UUID, subject_id: Optional[UUID] = None) -> List[Conversation]:
         async with AsyncSessionLocal() as session:
-            stmt = select(Conversation).where(Conversation.user_id == user_id).order_by(Conversation.created_at.desc())
+            stmt = select(Conversation).where(Conversation.user_id == user_id)
+            if subject_id:
+                stmt = stmt.where(Conversation.subject_id == subject_id)
+            stmt = stmt.order_by(Conversation.created_at.desc())
             result = await session.execute(stmt)
             return result.scalars().all()
 
@@ -23,9 +26,9 @@ class ConversationService:
             result = await session.execute(stmt)
             return result.scalars().first()
 
-    async def create_conversation(self, user_id: UUID, title: str = "New Chat") -> Conversation:
+    async def create_conversation(self, user_id: UUID, subject_id: UUID, title: str = "New Chat") -> Conversation:
         async with AsyncSessionLocal() as session:
-            conversation = Conversation(user_id=user_id, title=title)
+            conversation = Conversation(user_id=user_id, subject_id=subject_id, title=title)
             session.add(conversation)
             await session.commit()
             await session.refresh(conversation)

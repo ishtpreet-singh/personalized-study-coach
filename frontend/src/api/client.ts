@@ -38,8 +38,15 @@ apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem("access_token");
-      window.location.href = "/login";
+      const url = error.config?.url || '';
+      // Skip the global 401 redirect if the request is to an authentication endpoint.
+      // We want the auth pages (Login, Register) to catch these errors and display them inline.
+      const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/2fa');
+
+      if (!isAuthEndpoint) {
+        localStorage.removeItem("access_token");
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
   }

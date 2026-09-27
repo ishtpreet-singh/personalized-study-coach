@@ -12,7 +12,12 @@ RUN apt-get update && apt-get install -y \
     poppler-utils \
     libmagic1 \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Force Python requests to use the system's CA trust store instead of 'certifi'
+# This ensures enterprise/corporate proxy certificates added to the OS are respected.
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 WORKDIR /app
 

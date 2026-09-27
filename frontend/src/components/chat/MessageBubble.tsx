@@ -54,7 +54,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         </div>
 
         <div className={`ml-4 shrink-0 mt-0.5 ${isUser ? "block" : "hidden"}`}>
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white ring-2 ring-white/30 shadow-inner">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white rounded-full flex items-center justify-center text-primary-600 border border-primary-100 shadow-sm">
             <User size={18} className="sm:w-5 sm:h-5" />
           </div>
         </div>

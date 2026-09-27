@@ -90,7 +90,7 @@ class AuthService:
         if await user_repository.email_exists(db, email=user_in.email):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"An account with email '{user_in.email}' already exists.",
+                detail="❌ An account with this email already exists. Please sign in or use a different email.",
             )
 
         hashed = hash_password(user_in.password)
@@ -133,8 +133,8 @@ class AuthService:
 
         if not user or not user.hashed_password:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password.",
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="❌ User does not exist. Please create an account.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 

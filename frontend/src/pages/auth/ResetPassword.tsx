@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { authApi } from "../../api/auth";
+import { extractApiError } from "../../utils/error";
 import { Eye, EyeOff } from "lucide-react";
 
 export default function ResetPassword() {
@@ -11,6 +12,7 @@ export default function ResetPassword() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -45,7 +47,7 @@ export default function ResetPassword() {
       setStatus("success");
     } catch (err: any) {
       setStatus("error");
-      setErrorMsg(err.response?.data?.detail || "Failed to reset password.");
+      setErrorMsg(extractApiError(err, "Failed to reset password."));
     }
   };
 
@@ -100,14 +102,21 @@ export default function ResetPassword() {
 
               <div>
                 <label className="block text-sm font-medium text-surface-700">Confirm Password</label>
-                <div className="mt-1">
+                <div className="mt-1 relative">
                   <input
-                    type="password"
+                    type={showConfirmPassword ? "text" : "password"}
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="appearance-none block w-full px-3 py-2 border border-surface-300 rounded-md shadow-sm placeholder-surface-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    className="appearance-none block w-full px-3 py-2 border border-surface-300 rounded-md shadow-sm placeholder-surface-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm pr-10"
                   />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-surface-400 hover:text-surface-600"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
               </div>
 

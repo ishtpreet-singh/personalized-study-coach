@@ -37,12 +37,32 @@ async def chat(
         
         # Phase 3.3: Search ChromaDB using the generated embedding
         logger.info("Searching ChromaDB...")
-        chunks = await document_service.search_by_vector(embedding, k=5)
+        chunks = await document_service.search_by_vector(embedding, subject_id=request.subject_id, k=5)
         logger.info(f"Retrieved {len(chunks)} chunks.")
+        
+        # Phase 3.3.5: Fetch Learning Profile Context
+        from app.models.learning_profile import AILearningProfile
+        from sqlalchemy import select
+        from app.db.session import AsyncSessionLocal
+        
+        learning_profile_context = ""
+        async with AsyncSessionLocal() as session:
+            stmt = select(AILearningProfile).where(
+                AILearningProfile.user_id == current_user.id,
+                AILearningProfile.subject_id == request.subject_id
+            )
+            result = await session.execute(stmt)
+            profile = result.scalars().first()
+            if profile:
+                learning_profile_context = f"Mastery Score: {profile.mastery_score}%\nConfidence Level: {profile.confidence}%\nQuiz Accuracy: {profile.quiz_accuracy}%\n"
+                if profile.common_mistakes:
+                    learning_profile_context += f"Common Mistakes: {', '.join(profile.common_mistakes)}\n"
+                if profile.learning_insights:
+                    learning_profile_context += f"Insights: {', '.join(profile.learning_insights)}\n"
         
         # Phase 3.4: Build the prompt
         chunk_texts = [chunk.page_content for chunk in chunks]
-        prompt = prompt_builder.build_rag_prompt(request.question, chunk_texts)
+        prompt = prompt_builder.build_rag_prompt(request.question, chunk_texts, learning_profile_context)
         
         # Extract and deduplicate sources
         sources = []
@@ -66,7 +86,7 @@ async def chat(
             if not conversation:
                 raise HTTPException(status_code=404, detail="Conversation not found")
         else:
-            conversation = await conversation_service.create_conversation(current_user.id)
+            conversation = await conversation_service.create_conversation(current_user.id, request.subject_id)
             await conversation_service.auto_title_conversation(conversation.id, current_user.id, request.question)
         
         # Append user message

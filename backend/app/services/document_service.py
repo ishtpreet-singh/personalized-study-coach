@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
-from langchain_text_splitters import TokenTextSplitter
-from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.documents import Document as LangchainDocument
 from langchain_chroma import Chroma
 import chromadb
@@ -33,12 +33,32 @@ class CustomPPTXLoader:
     def load(self):
         prs = pptx.Presentation(self.file_path)
         text_runs = []
+        
+        def extract_text(shape):
+            extracted = ""
+            if hasattr(shape, "text") and shape.text:
+                extracted += shape.text + "\n"
+            if hasattr(shape, "has_table") and shape.has_table:
+                for row in shape.table.rows:
+                    row_text = []
+                    for cell in row.cells:
+                        if cell.text:
+                            row_text.append(cell.text.replace('\n', ' ').strip())
+                    if row_text:
+                        extracted += " | ".join(row_text) + "\n"
+            if hasattr(shape, "shapes"):
+                for child in shape.shapes:
+                    extracted += extract_text(child)
+            return extracted
+
         for slide in prs.slides:
             for shape in slide.shapes:
-                if hasattr(shape, "text"):
-                    text_runs.append(shape.text)
-        text = "\n".join(text_runs)
-        return [LangchainDocument(page_content=text, metadata={"source": self.file_path})]
+                text = extract_text(shape)
+                if text.strip():
+                    text_runs.append(text.strip())
+                    
+        final_text = "\n\n".join(text_runs)
+        return [LangchainDocument(page_content=final_text, metadata={"source": self.file_path})]
 
 class CustomTextLoader:
     def __init__(self, file_path: str, encoding: str = 'utf-8'):
@@ -77,28 +97,34 @@ class CustomImageLoader:
 
 class DocumentService:
     def __init__(self):
-        # Initialize the ChromaDB client
-        self.chroma_client = chromadb.HttpClient(
-            host=settings.CHROMA_HOST, 
-            port=settings.CHROMA_PORT
+        try:
+            # Initialize the ChromaDB client
+            self.chroma_client = chromadb.HttpClient(
+                host=settings.CHROMA_HOST, 
+                port=settings.CHROMA_PORT
+            )
+            self.embeddings = GoogleGenerativeAIEmbeddings(
+                model=settings.GEMINI_EMBEDDING_MODEL,
+                google_api_key=settings.GEMINI_API_KEY
+            )
+            # Using LangChain Chroma wrapper for easy integration
+            self.vector_store = Chroma(
+                client=self.chroma_client,
+                collection_name=settings.CHROMA_COLLECTION_NAME,
+                embedding_function=self.embeddings
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to initialize ChromaDB: {e}")
+            self.chroma_client = None
+            self.embeddings = None
+            self.vector_store = None
+            
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1600,
+            chunk_overlap=200,
+            separators=["\n\n", "\n", " ", ""]
         )
-        self.embeddings = NVIDIAEmbeddings(
-            model=settings.NVIDIA_EMBEDDING_MODEL,
-            api_key=settings.NVIDIA_API_KEY
-        )
-        # Using LangChain Chroma wrapper for easy integration
-        self.vector_store = Chroma(
-            client=self.chroma_client,
-            collection_name=settings.CHROMA_COLLECTION_NAME,
-            embedding_function=self.embeddings
-        )
-        self.text_splitter = TokenTextSplitter(
-            chunk_size=400,
-            chunk_overlap=50,
-            model_name=settings.OPENAI_MODEL  # uses tiktoken for this model's encoding
-        )
-        import tiktoken
-        self.tokenizer = tiktoken.encoding_for_model(settings.OPENAI_MODEL)
 
     def _get_loader(self, file_path: str):
         path = Path(file_path)
@@ -118,19 +144,20 @@ class DocumentService:
         else:
             raise DocumentProcessingError(f"Unsupported file extension: {ext}")
 
-    async def process_document(self, db: AsyncSession, document: Document) -> None:
+    async def process_document(self, db: AsyncSession, document: Document) -> Dict[str, float]:
         """
-        Background task to process a document:
-        1. Extract text
-        2. Chunk text
-        3. Embed and store in ChromaDB
-        4. Save chunks to Postgres
-        5. Update document status
+        Background task to process a document.
+        Returns a dictionary of execution times (in seconds).
         """
+        import time
+        timings = {}
+        t_start_total = time.perf_counter()
+        
         try:
             logger.info(f"Starting processing for document {document.id}. Updating status to PROCESSING.")
             # 1. Update status to PROCESSING
             document.status = DocumentStatus.PROCESSING
+            document.processing_stage = "PDF Parsing"
             await db.commit()
 
             # 2. Extract text using Langchain loaders
@@ -138,11 +165,17 @@ class DocumentService:
                 raise DocumentProcessingError(f"File not found: {document.file_path}")
 
             logger.info(f"Extracting text from {document.file_path} using custom loader.")
+            t_parse_start = time.perf_counter()
             loader = self._get_loader(document.file_path)
             langchain_docs = loader.load()
+            timings["pdf_parsing"] = time.perf_counter() - t_parse_start
 
             # 3. Chunk text
+            document.processing_stage = "Chunking"
+            await db.commit()
+            
             logger.info("Splitting text into chunks.")
+            t_chunk_start = time.perf_counter()
             chunks = self.text_splitter.split_documents(langchain_docs)
             
             if not chunks:
@@ -153,22 +186,27 @@ class DocumentService:
             # 4. Prepare for Vector DB
             texts = []
             
-            MAX_TOKENS = 512
+            MAX_CHARS = 2000
             
-            # Enforce hard limit and log token counts
+            # Enforce hard limit (fallback safety)
             for chunk in chunks:
-                tokens = self.tokenizer.encode(chunk.page_content)
-                if len(tokens) > MAX_TOKENS:
-                    # Hard split if still too large (fallback safety)
-                    for i in range(0, len(tokens), MAX_TOKENS):
-                        sub_tokens = tokens[i:i + MAX_TOKENS]
-                        texts.append(self.tokenizer.decode(sub_tokens))
+                content = chunk.page_content
+                if len(content) > MAX_CHARS:
+                    for i in range(0, len(content), MAX_CHARS):
+                        texts.append(content[i:i + MAX_CHARS])
                 else:
-                    texts.append(chunk.page_content)
+                    texts.append(content)
                     
-            logger.info(f"Enforced token limit. Final chunk count: {len(texts)}.")
+            logger.info(f"Enforced character limit. Final chunk count: {len(texts)}.")
+            timings["chunking"] = time.perf_counter() - t_chunk_start
 
+            # 5. Embed and store in ChromaDB
+            document.processing_stage = "Embeddings"
+            await db.commit()
+            
             logger.info("Generating embeddings and storing in ChromaDB.")
+            t_embed_start = time.perf_counter()
+            
             metadatas = []
             db_chunks = []
             
@@ -176,6 +214,7 @@ class DocumentService:
                 metadata = {
                     "user_id": str(document.user_id),
                     "document_id": str(document.id),
+                    "subject_id": str(document.subject_id),
                     "filename": document.title,
                     "chunk_index": i,
                     "subject": "" # For future use
@@ -193,7 +232,6 @@ class DocumentService:
                     )
                 )
 
-            # 5. Embed and store in ChromaDB
             # We generate deterministic IDs or let Chroma generate them
             ids = [f"{document.id}_chunk_{i}" for i in range(len(texts))]
             
@@ -208,10 +246,15 @@ class DocumentService:
                 db_chunk.embedding_id = ids[i]
                 db.add(db_chunk)
 
-            # 7. Mark as completed
-            document.status = DocumentStatus.COMPLETED
+            timings["embeddings"] = time.perf_counter() - t_embed_start
+
+            # 7. Mark as TUTOR_READY
+            document.status = DocumentStatus.TUTOR_READY
+            document.processing_stage = "Extracting Topics"
             await db.commit()
-            logger.info(f"Successfully processed document {document.id}. Status updated to COMPLETED.")
+            logger.info(f"Successfully processed document {document.id}. Status updated to TUTOR_READY.")
+            
+            return timings
 
         except Exception as e:
             logger.error(f"Error processing document {document.id}: {str(e)}\n{traceback.format_exc()}")
@@ -222,6 +265,7 @@ class DocumentService:
                 document.error_message = str(e)
                 await db.commit()
                 logger.info(f"Document {document.id} status updated to FAILED.")
+            raise
 
     async def process_document_background(self, document_id: uuid.UUID) -> None:
         """
@@ -250,7 +294,21 @@ class DocumentService:
         except Exception as e:
             logger.error(f"Error cleaning up document {document.id}: {str(e)}")
 
-    async def search_by_vector(self, embedding: list[float], k: int = 5):
+    async def delete_document_vectors(self, document: Document) -> None:
+        """
+        Delete ONLY the ChromaDB vectors for a document without touching the file or PostgreSQL.
+        Used by Retry Processing to clear stale embeddings before re-indexing.
+        """
+        try:
+            if self.chroma_client is None:
+                return
+            collection = self.chroma_client.get_collection(settings.CHROMA_COLLECTION_NAME)
+            collection.delete(where={"document_id": str(document.id)})
+            logger.info(f"Cleared stale vectors for document {document.id} (retry)")
+        except Exception as e:
+            logger.warning(f"Could not clear vectors for document {document.id} (non-fatal): {str(e)})")
+
+    async def search_by_vector(self, embedding: list[float], subject_id: uuid.UUID = None, document_id: uuid.UUID = None, k: int = 5):
         """
         Search ChromaDB using a pre-generated embedding vector.
         """
@@ -267,15 +325,56 @@ class DocumentService:
                 return []
                 
             from fastapi.concurrency import run_in_threadpool
+            
+            filter_dict = {}
+            if subject_id:
+                filter_dict["subject_id"] = str(subject_id)
+            if document_id:
+                filter_dict["document_id"] = str(document_id)
+                
             # similarity_search_by_vector is a synchronous LangChain method
             results = await run_in_threadpool(
                 self.vector_store.similarity_search_by_vector,
                 embedding,
-                k=k
+                k=k,
+                filter=filter_dict if filter_dict else None
             )
             return results
         except Exception as e:
             logger.error(f"Error searching ChromaDB by vector: {str(e)}")
             raise DocumentProcessingError(f"Retrieval failed: {str(e)}")
+
+    async def search_by_text(self, query: str, subject_id: uuid.UUID = None, document_id: uuid.UUID = None, k: int = 5):
+        """
+        Search ChromaDB using a text query.
+        """
+        try:
+            # Check if collection exists
+            try:
+                collection = self.chroma_client.get_collection(settings.CHROMA_COLLECTION_NAME)
+            except ValueError:
+                return []
+                
+            if collection.count() == 0:
+                return []
+                
+            from fastapi.concurrency import run_in_threadpool
+            
+            filter_dict = {}
+            if subject_id:
+                filter_dict["subject_id"] = str(subject_id)
+            if document_id:
+                filter_dict["document_id"] = str(document_id)
+                
+            results = await run_in_threadpool(
+                self.vector_store.similarity_search,
+                query,
+                k=k,
+                filter=filter_dict if filter_dict else None
+            )
+            return results
+        except Exception as e:
+            logger.error(f"Error searching ChromaDB by text: {str(e)}")
+            return []
 
 document_service = DocumentService()

@@ -11,11 +11,12 @@ export const chatApi = {
   /**
    * Send a question to the AI Tutor
    */
-  async sendMessage(question: string, conversationId?: string): Promise<{ answer: string; sources: Source[], conversation_id: string }> {
+  async sendMessage(question: string, conversationId?: string, subjectId?: string): Promise<{ answer: string; sources: Source[], conversation_id: string }> {
     const response = await apiClient.post<ChatResponse & { conversation_id: string }>("/api/v1/chat", { 
         question, 
         stream: false,
-        conversation_id: conversationId 
+        conversation_id: conversationId,
+        subject_id: subjectId
     });
     return {
         answer: response.data.answer,
@@ -27,7 +28,7 @@ export const chatApi = {
   /**
    * Stream a question to the AI Tutor and yield chunks/sources
    */
-  async *streamMessage(question: string, conversationId?: string): AsyncGenerator<{ type: "sources" | "chunk" | "conversation_id", data: any }, void, unknown> {
+  async *streamMessage(question: string, conversationId?: string, subjectId?: string): AsyncGenerator<{ type: "sources" | "chunk" | "conversation_id", data: any }, void, unknown> {
     const token = localStorage.getItem("access_token");
     const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
     
@@ -40,7 +41,8 @@ export const chatApi = {
       body: JSON.stringify({ 
         question, 
         stream: true,
-        conversation_id: conversationId
+        conversation_id: conversationId,
+        subject_id: subjectId
       }),
     });
 

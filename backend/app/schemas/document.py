@@ -22,6 +22,10 @@ class DocumentResponse(DocumentBase):
     user_id: UUID
     status: DocumentStatus
     error_message: Optional[str] = None
+    failed_stage: Optional[str] = None
+    failed_at: Optional[datetime] = None
+    retry_count: int
+    quiz_ready: bool
     created_at: datetime
     updated_at: datetime
 

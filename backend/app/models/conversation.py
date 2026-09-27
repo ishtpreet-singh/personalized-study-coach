@@ -8,10 +8,12 @@ class Conversation(BaseModel):
     __tablename__ = "conversations"
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), nullable=True, index=True) # Nullable for migration
     title: Mapped[str] = mapped_column(String(255), default="New Chat", nullable=False)
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="conversations")
+    subject: Mapped["Subject"] = relationship("Subject", back_populates="conversations")
     messages: Mapped[List["Message"]] = relationship(
         "Message", 
         back_populates="conversation", 

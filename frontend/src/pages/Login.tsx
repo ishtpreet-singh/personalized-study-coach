@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card';
 import { useAuth } from '../hooks/useAuth';
 import apiClient from '../api/client';
 import { authApi } from '../api/auth';
-import axios from 'axios';
+import { extractApiError } from '../utils/error';
 
 type LoginStep = 'credentials' | 'otp';
 
@@ -24,6 +24,7 @@ export default function Login() {
   const [preAuthToken, setPreAuthToken] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -31,16 +32,7 @@ export default function Login() {
     }
   }, [isAuthenticated, navigate]);
 
-  const extractError = (err: unknown): string => {
-    if (axios.isAxiosError(err) && err.response) {
-      const detail = err.response.data.detail;
-      if (Array.isArray(detail)) {
-        return detail.map((d: any) => d.msg.replace('Value error, ', '')).join(' • ');
-      }
-      return typeof detail === 'string' ? detail : 'Something went wrong.';
-    }
-    return 'An unexpected error occurred. Please try again.';
-  };
+
 
   const handleCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +54,7 @@ export default function Login() {
         navigate(from, { replace: true });
       }
     } catch (err) {
-      setError(extractError(err));
+      setError(extractApiError(err, 'Invalid email or password.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -80,7 +72,7 @@ export default function Login() {
         const from = location.state?.from?.pathname || '/dashboard';
         navigate(from, { replace: true });
       } catch (err) {
-        setError(extractError(err));
+        setError(extractApiError(err, 'Google login failed. Please try again.'));
       } finally {
         setIsSubmitting(false);
       }
@@ -103,7 +95,7 @@ export default function Login() {
       const from = location.state?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
     } catch (err) {
-      setError(extractError(err));
+      setError(extractApiError(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -153,7 +145,7 @@ export default function Login() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
                     required
-                    className="w-full px-4 py-2.5 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                    className="w-full px-4 py-2.5 bg-surface-50 border border-surface-200 rounded-xl text-sm font-normal focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
                   />
                 </div>
 
@@ -162,14 +154,23 @@ export default function Login() {
                     <label className="text-sm font-medium text-surface-700">Password</label>
                     <Link to="/forgot-password" className="text-xs text-primary-600 hover:text-primary-700">Forgot password?</Link>
                   </div>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    className="w-full px-4 py-2.5 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      className="w-full pl-4 pr-12 py-2.5 bg-surface-50 border border-surface-200 rounded-xl text-sm font-normal focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 focus:outline-none"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
 
                 <Button type="submit" className="w-full mt-2" isLoading={isSubmitting}>
