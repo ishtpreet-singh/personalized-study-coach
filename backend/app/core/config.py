@@ -78,10 +78,20 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = 20
     DB_POOL_TIMEOUT: int = 30     # seconds before "connection not available" error
 
+    # ── Vector Store Provider ──────────────────────────────
+    # "chroma" for local ChromaDB HTTP client, "pgvector" for Supabase PostgreSQL pgvector
+    VECTOR_STORE_PROVIDER: Literal["pgvector", "chroma"] = "chroma"
+
     # ── ChromaDB ───────────────────────────────────────────
     CHROMA_HOST: str = "localhost"
     CHROMA_PORT: int = 8001
     CHROMA_COLLECTION_NAME: str = "study_materials"
+
+    # ── Supabase Storage ───────────────────────────────────
+    # Used for persistent document file storage on Render/production
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_STORAGE_BUCKET: str = "study_coach_documents"
 
     # ── OpenAI ─────────────────────────────────────────────
     OPENAI_API_KEY: str = ""

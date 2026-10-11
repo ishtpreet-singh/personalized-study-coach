@@ -1,8 +1,10 @@
 import logging
 import uuid
 import os
+import time
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+import traceback
 
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -10,8 +12,8 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.documents import Document as LangchainDocument
 from langchain_chroma import Chroma
 import chromadb
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-import traceback
 import pptx
 import openpyxl
 from PIL import Image
@@ -20,11 +22,15 @@ import pytesseract
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.document import Document, DocumentChunk, DocumentStatus
+from app.models.document_vector import DocumentChunkVector
+from app.services.storage_service import storage_service
 
 logger = logging.getLogger(__name__)
 
+
 class DocumentProcessingError(Exception):
     pass
+
 
 class CustomPPTXLoader:
     def __init__(self, file_path: str):
@@ -33,7 +39,7 @@ class CustomPPTXLoader:
     def load(self):
         prs = pptx.Presentation(self.file_path)
         text_runs = []
-        
+
         def extract_text(shape):
             extracted = ""
             if hasattr(shape, "text") and shape.text:
@@ -56,9 +62,10 @@ class CustomPPTXLoader:
                 text = extract_text(shape)
                 if text.strip():
                     text_runs.append(text.strip())
-                    
+
         final_text = "\n\n".join(text_runs)
         return [LangchainDocument(page_content=final_text, metadata={"source": self.file_path})]
+
 
 class CustomTextLoader:
     def __init__(self, file_path: str, encoding: str = 'utf-8'):
@@ -69,6 +76,7 @@ class CustomTextLoader:
         with open(self.file_path, 'r', encoding=self.encoding) as f:
             text = f.read()
         return [LangchainDocument(page_content=text, metadata={"source": self.file_path})]
+
 
 class CustomXLSXLoader:
     def __init__(self, file_path: str):
@@ -86,6 +94,7 @@ class CustomXLSXLoader:
         text = "\n".join(text_runs)
         return [LangchainDocument(page_content=text, metadata={"source": self.file_path})]
 
+
 class CustomImageLoader:
     def __init__(self, file_path: str):
         self.file_path = file_path
@@ -95,31 +104,38 @@ class CustomImageLoader:
         text = pytesseract.image_to_string(img)
         return [LangchainDocument(page_content=text, metadata={"source": self.file_path})]
 
+
 class DocumentService:
     def __init__(self):
+        # Always initialize Gemini embeddings (used by both Chroma and pgvector)
         try:
-            # Initialize the ChromaDB client
-            self.chroma_client = chromadb.HttpClient(
-                host=settings.CHROMA_HOST, 
-                port=settings.CHROMA_PORT
-            )
             self.embeddings = GoogleGenerativeAIEmbeddings(
                 model=settings.GEMINI_EMBEDDING_MODEL,
                 google_api_key=settings.GEMINI_API_KEY
             )
-            # Using LangChain Chroma wrapper for easy integration
-            self.vector_store = Chroma(
-                client=self.chroma_client,
-                collection_name=settings.CHROMA_COLLECTION_NAME,
-                embedding_function=self.embeddings
-            )
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Failed to initialize ChromaDB: {e}")
-            self.chroma_client = None
+            logger.warning(f"Could not initialize GoogleGenerativeAIEmbeddings: {e}")
             self.embeddings = None
-            self.vector_store = None
-            
+
+        # Conditionally initialize ChromaDB client only if using chroma provider
+        self.chroma_client = None
+        self.vector_store = None
+
+        if settings.VECTOR_STORE_PROVIDER == "chroma":
+            try:
+                self.chroma_client = chromadb.HttpClient(
+                    host=settings.CHROMA_HOST,
+                    port=settings.CHROMA_PORT
+                )
+                self.vector_store = Chroma(
+                    client=self.chroma_client,
+                    collection_name=settings.CHROMA_COLLECTION_NAME,
+                    embedding_function=self.embeddings
+                )
+                logger.info(f"Initialized ChromaDB client at {settings.CHROMA_HOST}:{settings.CHROMA_PORT}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize ChromaDB (provider=chroma): {e}")
+
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1600,
             chunk_overlap=200,
@@ -129,66 +145,65 @@ class DocumentService:
     def _get_loader(self, file_path: str):
         path = Path(file_path)
         ext = path.suffix.lower()
-        if ext == '.pdf':
+
+        if ext == ".pdf":
             return PyPDFLoader(file_path)
-        elif ext == '.docx':
+        elif ext in [".docx", ".doc"]:
             return Docx2txtLoader(file_path)
-        elif ext == '.pptx':
+        elif ext in [".pptx", ".ppt"]:
             return CustomPPTXLoader(file_path)
-        elif ext == '.txt':
+        elif ext == ".txt":
             return CustomTextLoader(file_path, encoding='utf-8')
-        elif ext == '.xlsx':
+        elif ext in [".xlsx", ".xls"]:
             return CustomXLSXLoader(file_path)
-        elif ext in ['.jpg', '.jpeg', '.png']:
+        elif ext in [".jpg", ".jpeg", ".png"]:
             return CustomImageLoader(file_path)
         else:
-            raise DocumentProcessingError(f"Unsupported file extension: {ext}")
+            raise DocumentProcessingError(f"Unsupported file format: {ext}")
 
-    async def process_document(self, db: AsyncSession, document: Document) -> Dict[str, float]:
+    async def process_document(self, db: AsyncSession, document: Document) -> dict:
         """
-        Background task to process a document.
+        Executes document ingestion:
+          1. Ensures file is locally available (via StorageService)
+          2. Text extraction
+          3. Chunking
+          4. Vector embedding generation (Gemini)
+          5. Persistent storage in pgvector (production) or ChromaDB (local)
+          6. Chunks saved to PostgreSQL
         Returns a dictionary of execution times (in seconds).
         """
-        import time
         timings = {}
-        t_start_total = time.perf_counter()
-        
+
         try:
             logger.info(f"Starting processing for document {document.id}. Updating status to PROCESSING.")
-            # 1. Update status to PROCESSING
             document.status = DocumentStatus.PROCESSING
             document.processing_stage = "PDF Parsing"
             await db.commit()
 
-            # 2. Extract text using Langchain loaders
-            if not os.path.exists(document.file_path):
-                raise DocumentProcessingError(f"File not found: {document.file_path}")
-
-            logger.info(f"Extracting text from {document.file_path} using custom loader.")
+            # 1. Ensure file is locally available (downloads from Supabase Storage if running on Render)
+            local_path = await storage_service.ensure_local_file(document.file_path)
+            logger.info(f"Extracting text from {local_path} using custom loader.")
             t_parse_start = time.perf_counter()
-            loader = self._get_loader(document.file_path)
+            loader = self._get_loader(local_path)
             langchain_docs = loader.load()
             timings["pdf_parsing"] = time.perf_counter() - t_parse_start
 
-            # 3. Chunk text
+            # 2. Chunk text
             document.processing_stage = "Chunking"
             await db.commit()
-            
+
             logger.info("Splitting text into chunks.")
             t_chunk_start = time.perf_counter()
             chunks = self.text_splitter.split_documents(langchain_docs)
-            
+
             if not chunks:
                 raise DocumentProcessingError("No text could be extracted from the document.")
 
             logger.info(f"Created {len(chunks)} initial chunks.")
 
-            # 4. Prepare for Vector DB
+            # 3. Enforce chunk length limits
             texts = []
-            
             MAX_CHARS = 2000
-            
-            # Enforce hard limit (fallback safety)
             for chunk in chunks:
                 content = chunk.page_content
                 if len(content) > MAX_CHARS:
@@ -196,81 +211,103 @@ class DocumentService:
                         texts.append(content[i:i + MAX_CHARS])
                 else:
                     texts.append(content)
-                    
-            logger.info(f"Enforced character limit. Final chunk count: {len(texts)}.")
+
             timings["chunking"] = time.perf_counter() - t_chunk_start
 
-            # 5. Embed and store in ChromaDB
+            # 4. Generate embeddings and store in vector database
             document.processing_stage = "Embeddings"
             await db.commit()
-            
-            logger.info("Generating embeddings and storing in ChromaDB.")
+
+            logger.info(f"Generating embeddings for {len(texts)} chunks (provider={settings.VECTOR_STORE_PROVIDER}).")
             t_embed_start = time.perf_counter()
-            
-            metadatas = []
-            db_chunks = []
-            
-            for i, text in enumerate(texts):
-                metadata = {
-                    "user_id": str(document.user_id),
-                    "document_id": str(document.id),
-                    "subject_id": str(document.subject_id),
-                    "filename": document.title,
-                    "chunk_index": i,
-                    "subject": "" # For future use
-                }
-                metadatas.append(metadata)
-                
-                # Create corresponding DB chunk object
-                db_chunks.append(
-                    DocumentChunk(
+
+            if settings.VECTOR_STORE_PROVIDER == "pgvector":
+                # ── pgvector flow (Supabase / Production) ──
+                if hasattr(self.embeddings, "aembed_documents"):
+                    vectors = await self.embeddings.aembed_documents(texts)
+                else:
+                    from fastapi.concurrency import run_in_threadpool
+                    vectors = await run_in_threadpool(self.embeddings.embed_documents, texts)
+
+                for i, text in enumerate(texts):
+                    chunk_id = uuid.uuid4()
+                    db_chunk = DocumentChunk(
+                        id=chunk_id,
                         document_id=document.id,
                         chunk_index=i,
                         content=text,
-                        # We will assign embedding_id after insertion if we need it
-                        embedding_id="" 
+                        embedding_id=f"{document.id}_chunk_{i}"
                     )
+                    db.add(db_chunk)
+
+                    vector_entry = DocumentChunkVector(
+                        chunk_id=chunk_id,
+                        document_id=document.id,
+                        subject_id=document.subject_id,
+                        user_id=document.user_id,
+                        embedding=vectors[i]
+                    )
+                    db.add(vector_entry)
+
+            else:
+                # ── ChromaDB flow (Local / Backward-compatible) ──
+                metadatas = []
+                db_chunks = []
+
+                for i, text in enumerate(texts):
+                    metadata = {
+                        "user_id": str(document.user_id),
+                        "document_id": str(document.id),
+                        "subject_id": str(document.subject_id),
+                        "filename": document.title,
+                        "chunk_index": i,
+                        "subject": ""
+                    }
+                    metadatas.append(metadata)
+
+                    db_chunks.append(
+                        DocumentChunk(
+                            document_id=document.id,
+                            chunk_index=i,
+                            content=text,
+                            embedding_id=""
+                        )
+                    )
+
+                ids = [f"{document.id}_chunk_{i}" for i in range(len(texts))]
+
+                self.vector_store.add_texts(
+                    texts=texts,
+                    metadatas=metadatas,
+                    ids=ids
                 )
 
-            # We generate deterministic IDs or let Chroma generate them
-            ids = [f"{document.id}_chunk_{i}" for i in range(len(texts))]
-            
-            self.vector_store.add_texts(
-                texts=texts,
-                metadatas=metadatas,
-                ids=ids
-            )
-            
-            # 6. Save chunks to PostgreSQL
-            for i, db_chunk in enumerate(db_chunks):
-                db_chunk.embedding_id = ids[i]
-                db.add(db_chunk)
+                for i, db_chunk in enumerate(db_chunks):
+                    db_chunk.embedding_id = ids[i]
+                    db.add(db_chunk)
 
             timings["embeddings"] = time.perf_counter() - t_embed_start
 
-            # 7. Mark as TUTOR_READY
+            # 5. Mark as TUTOR_READY
             document.status = DocumentStatus.TUTOR_READY
             document.processing_stage = "Extracting Topics"
             await db.commit()
             logger.info(f"Successfully processed document {document.id}. Status updated to TUTOR_READY.")
-            
+
             return timings
 
         except Exception as e:
             logger.error(f"Error processing document {document.id}: {str(e)}\n{traceback.format_exc()}")
             await db.rollback()
-            document = await db.get(Document, document.id)
-            if document:
-                document.status = DocumentStatus.FAILED
-                document.error_message = str(e)
+            doc_record = await db.get(Document, document.id)
+            if doc_record:
+                doc_record.status = DocumentStatus.FAILED
+                doc_record.error_message = str(e)
                 await db.commit()
                 logger.info(f"Document {document.id} status updated to FAILED.")
             raise
 
     async def process_document_background(self, document_id: uuid.UUID) -> None:
-        """
-        Wrapper to process a document in a background task with its own database session.
-        """
         async with AsyncSessionLocal() as session:
             document = await session.get(Document, document_id)
             if document:
@@ -278,103 +315,161 @@ class DocumentService:
 
     async def delete_document(self, db: AsyncSession, document: Document) -> None:
         """
-        Delete a document's chunks from ChromaDB. 
-        PostgreSQL chunks are cascade-deleted automatically.
+        Delete a document's vectors and physical/cloud storage.
+        PostgreSQL document_chunks and document_chunk_vectors cascade-delete automatically.
         """
         try:
-            # Delete from ChromaDB where metadata document_id matches
-            collection = self.chroma_client.get_collection(settings.CHROMA_COLLECTION_NAME)
-            collection.delete(where={"document_id": str(document.id)})
-            logger.info(f"Deleted vectors for document {document.id}")
-            
-            # Delete physical file
-            if os.path.exists(document.file_path):
-                os.remove(document.file_path)
-                
+            await self.delete_document_vectors(document, db=db)
+            await storage_service.delete_file(document.file_path)
+            logger.info(f"Cleaned up vectors and storage for document {document.id}")
         except Exception as e:
             logger.error(f"Error cleaning up document {document.id}: {str(e)}")
 
-    async def delete_document_vectors(self, document: Document) -> None:
+    async def delete_document_vectors(self, document: Document, db: Optional[AsyncSession] = None) -> None:
         """
-        Delete ONLY the ChromaDB vectors for a document without touching the file or PostgreSQL.
-        Used by Retry Processing to clear stale embeddings before re-indexing.
+        Clear vector embeddings for a document (used on retry or delete).
         """
         try:
-            if self.chroma_client is None:
-                return
-            collection = self.chroma_client.get_collection(settings.CHROMA_COLLECTION_NAME)
-            collection.delete(where={"document_id": str(document.id)})
-            logger.info(f"Cleared stale vectors for document {document.id} (retry)")
-        except Exception as e:
-            logger.warning(f"Could not clear vectors for document {document.id} (non-fatal): {str(e)})")
+            if settings.VECTOR_STORE_PROVIDER == "pgvector":
+                async def _delete_pg(session: AsyncSession):
+                    stmt = delete(DocumentChunkVector).where(DocumentChunkVector.document_id == document.id)
+                    await session.execute(stmt)
+                    logger.info(f"Cleared pgvector embeddings for document {document.id}")
 
-    async def search_by_vector(self, embedding: list[float], subject_id: uuid.UUID = None, document_id: uuid.UUID = None, k: int = 5):
-        """
-        Search ChromaDB using a pre-generated embedding vector.
-        """
-        try:
-            # Check if collection exists
-            try:
-                collection = self.chroma_client.get_collection(settings.CHROMA_COLLECTION_NAME)
-            except ValueError:
-                logger.warning(f"ChromaDB collection {settings.CHROMA_COLLECTION_NAME} does not exist.")
-                return []
-                
-            if collection.count() == 0:
-                logger.warning("ChromaDB collection is empty.")
-                return []
-                
-            from fastapi.concurrency import run_in_threadpool
-            
-            filter_dict = {}
-            if subject_id:
-                filter_dict["subject_id"] = str(subject_id)
-            if document_id:
-                filter_dict["document_id"] = str(document_id)
-                
-            # similarity_search_by_vector is a synchronous LangChain method
-            results = await run_in_threadpool(
-                self.vector_store.similarity_search_by_vector,
-                embedding,
-                k=k,
-                filter=filter_dict if filter_dict else None
-            )
-            return results
+                if db is not None:
+                    await _delete_pg(db)
+                else:
+                    async with AsyncSessionLocal() as session:
+                        await _delete_pg(session)
+                        await session.commit()
+            else:
+                if self.chroma_client is not None:
+                    collection = self.chroma_client.get_collection(settings.CHROMA_COLLECTION_NAME)
+                    collection.delete(where={"document_id": str(document.id)})
+                    logger.info(f"Cleared ChromaDB vectors for document {document.id}")
         except Exception as e:
-            logger.error(f"Error searching ChromaDB by vector: {str(e)}")
-            raise DocumentProcessingError(f"Retrieval failed: {str(e)}")
+            logger.warning(f"Could not clear vectors for document {document.id} (non-fatal): {str(e)}")
 
-    async def search_by_text(self, query: str, subject_id: uuid.UUID = None, document_id: uuid.UUID = None, k: int = 5):
+    async def search_by_vector(
+        self,
+        embedding: list[float],
+        subject_id: Optional[uuid.UUID] = None,
+        user_id: Optional[uuid.UUID] = None,
+        document_id: Optional[uuid.UUID] = None,
+        k: int = 5,
+        db: Optional[AsyncSession] = None
+    ) -> List[LangchainDocument]:
         """
-        Search ChromaDB using a text query.
+        Search for nearest neighbor document chunks using a query embedding.
+        Enforces strict subject and user isolation.
         """
-        try:
-            # Check if collection exists
+        if settings.VECTOR_STORE_PROVIDER == "pgvector":
+            async def _run_pg_search(session: AsyncSession) -> List[LangchainDocument]:
+                stmt = (
+                    select(
+                        DocumentChunk.content,
+                        Document.title.label("filename"),
+                        Document.id.label("document_id"),
+                        Document.subject_id.label("subject_id"),
+                        DocumentChunkVector.chunk_id,
+                        DocumentChunkVector.embedding.cosine_distance(embedding).label("distance")
+                    )
+                    .join(DocumentChunk, DocumentChunk.id == DocumentChunkVector.chunk_id)
+                    .join(Document, Document.id == DocumentChunkVector.document_id)
+                )
+
+                if subject_id is not None:
+                    stmt = stmt.where(DocumentChunkVector.subject_id == subject_id)
+                if user_id is not None:
+                    stmt = stmt.where(DocumentChunkVector.user_id == user_id)
+                if document_id is not None:
+                    stmt = stmt.where(DocumentChunkVector.document_id == document_id)
+
+                stmt = stmt.order_by("distance").limit(k)
+                result = await session.execute(stmt)
+                rows = result.all()
+
+                results = []
+                for row in rows:
+                    results.append(
+                        LangchainDocument(
+                            page_content=row.content,
+                            metadata={
+                                "filename": row.filename,
+                                "document_id": str(row.document_id),
+                                "subject_id": str(row.subject_id),
+                                "chunk_id": str(row.chunk_id),
+                                "source": row.filename,
+                                "distance": float(row.distance) if row.distance is not None else 0.0,
+                            }
+                        )
+                    )
+                return results
+
+            if db is not None:
+                return await _run_pg_search(db)
+            else:
+                async with AsyncSessionLocal() as session:
+                    return await _run_pg_search(session)
+
+        else:
+            # ── ChromaDB flow ──
             try:
+                if self.chroma_client is None or self.vector_store is None:
+                    logger.warning("ChromaDB client is not available.")
+                    return []
+
                 collection = self.chroma_client.get_collection(settings.CHROMA_COLLECTION_NAME)
-            except ValueError:
-                return []
-                
-            if collection.count() == 0:
-                return []
-                
+                if collection.count() == 0:
+                    return []
+
+                from fastapi.concurrency import run_in_threadpool
+
+                filter_dict = {}
+                if subject_id:
+                    filter_dict["subject_id"] = str(subject_id)
+                if user_id:
+                    filter_dict["user_id"] = str(user_id)
+                if document_id:
+                    filter_dict["document_id"] = str(document_id)
+
+                results = await run_in_threadpool(
+                    self.vector_store.similarity_search_by_vector,
+                    embedding,
+                    k=k,
+                    filter=filter_dict if filter_dict else None
+                )
+                return results
+            except Exception as e:
+                logger.error(f"Error searching ChromaDB by vector: {str(e)}")
+                raise DocumentProcessingError(f"Retrieval failed: {str(e)}")
+
+    async def search_by_text(
+        self,
+        query: str,
+        subject_id: Optional[uuid.UUID] = None,
+        user_id: Optional[uuid.UUID] = None,
+        document_id: Optional[uuid.UUID] = None,
+        k: int = 5,
+        db: Optional[AsyncSession] = None
+    ) -> List[LangchainDocument]:
+        """
+        Embeds query text and executes semantic search.
+        """
+        if hasattr(self.embeddings, "aembed_query"):
+            query_embedding = await self.embeddings.aembed_query(query)
+        else:
             from fastapi.concurrency import run_in_threadpool
-            
-            filter_dict = {}
-            if subject_id:
-                filter_dict["subject_id"] = str(subject_id)
-            if document_id:
-                filter_dict["document_id"] = str(document_id)
-                
-            results = await run_in_threadpool(
-                self.vector_store.similarity_search,
-                query,
-                k=k,
-                filter=filter_dict if filter_dict else None
-            )
-            return results
-        except Exception as e:
-            logger.error(f"Error searching ChromaDB by text: {str(e)}")
-            return []
+            query_embedding = await run_in_threadpool(self.embeddings.embed_query, query)
+
+        return await self.search_by_vector(
+            embedding=query_embedding,
+            subject_id=subject_id,
+            user_id=user_id,
+            document_id=document_id,
+            k=k,
+            db=db
+        )
+
 
 document_service = DocumentService()

@@ -13,6 +13,7 @@ sqlalchemy==2.0.30
 alembic==1.13.1               # Database migrations
 asyncpg==0.29.0               # Async PostgreSQL driver
 psycopg2-binary==2.9.9        # Sync PostgreSQL driver (Alembic offline mode)
+pgvector>=0.3.0               # PostgreSQL vector extension driver for SQLAlchemy & asyncpg
 
 # ── Pydantic & Settings ───────────────────────────────
 pydantic==2.7.1
@@ -44,6 +45,7 @@ openai==1.35.3
 tiktoken==0.7.0
 langchain-nvidia-ai-endpoints==0.1.6
 langchain-google-genai==1.0.10
+langchain-text-splitters==0.2.4
 
 # ── Vector Database ───────────────────────────────────
 chromadb==0.5.3

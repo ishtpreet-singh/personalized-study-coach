@@ -35,9 +35,27 @@ async def chat(
             
         logger.info("Query embedding generated successfully.")
         
-        # Phase 3.3: Search ChromaDB using the generated embedding
-        logger.info("Searching ChromaDB...")
-        chunks = await document_service.search_by_vector(embedding, subject_id=request.subject_id, k=5)
+        # Verify subject ownership
+        from app.models.subject import Subject
+        from app.db.session import AsyncSessionLocal
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as session:
+            subj_record = await session.get(Subject, request.subject_id)
+            if not subj_record or subj_record.user_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Subject not found or access denied."
+                )
+
+        # Search vector store with strict subject and user isolation
+        logger.info(f"Searching vector store (provider={settings.VECTOR_STORE_PROVIDER})...")
+        chunks = await document_service.search_by_vector(
+            embedding,
+            subject_id=request.subject_id,
+            user_id=current_user.id,
+            k=5
+        )
         logger.info(f"Retrieved {len(chunks)} chunks.")
         
         # Phase 3.3.5: Fetch Learning Profile Context

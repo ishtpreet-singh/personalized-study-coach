@@ -21,5 +21,23 @@ from app.models.support import SupportTicket, BugReport
 from app.models.subject import Subject
 from app.models.learning_profile import AILearningProfile
 from app.models.activity import StudyActivity
+from app.models.document_vector import DocumentChunkVector
 
-__all__ = ["User", "Document", "DocumentChunk", "Conversation", "Message", "Question", "Quiz", "QuizAttempt", "QuizAnswer", "Topic", "SupportTicket", "BugReport", "Subject", "AILearningProfile", "StudyActivity"]
+__all__ = [
+    "User",
+    "Document",
+    "DocumentChunk",
+    "DocumentChunkVector",
+    "Conversation",
+    "Message",
+    "Question",
+    "Quiz",
+    "QuizAttempt",
+    "QuizAnswer",
+    "Topic",
+    "SupportTicket",
+    "BugReport",
+    "Subject",
+    "AILearningProfile",
+    "StudyActivity",
+]

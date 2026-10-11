@@ -40,6 +40,15 @@ async def upload_document(
             detail=f"Unsupported file type. Allowed types are: PDF, DOCX, PPTX, TXT, XLSX, JPG, PNG."
         )
 
+    # Verify subject ownership
+    from app.models.subject import Subject
+    subj_check = await db.get(Subject, subject_id)
+    if not subj_check or subj_check.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Subject not found or access denied."
+        )
+
     # 1. Save file to storage
     try:
         file_path = await storage_service.save_file(file, current_user.id)

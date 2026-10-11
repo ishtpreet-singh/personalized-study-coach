@@ -30,9 +30,7 @@ config.set_main_option(
 )
 
 # ── Import ALL models so Alembic can detect table definitions ──
-from app.models import user  # noqa: F401 — registers User with Base.metadata
-# Add future model imports here as they are created:
-# from app.models import document, quiz, quiz_result, study_plan  # noqa
+import app.models  # noqa: F401 — registers all models with Base.metadata
 
 target_metadata = Base.metadata
 
